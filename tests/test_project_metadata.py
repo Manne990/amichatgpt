@@ -21,6 +21,15 @@ class ProjectMetadataTest(unittest.TestCase):
         for target in ("host-test", "test", "amiga", "package", "adf"):
             self.assertRegex(makefile, rf"(^|\n){re.escape(target)}:")
 
+    def test_workbench_icon_is_packaged(self):
+        icon = ROOT / "packaging" / "AmiChatGPT.info"
+        self.assertTrue(icon.exists())
+        self.assertGreater(icon.stat().st_size, 0)
+
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        self.assertIn("packaging/$(APP_NAME).info", makefile)
+        self.assertIn("$(PACKAGE_DIR)/$(APP_NAME).info", makefile)
+
     def test_ci_build_script_sets_toolchain_path(self):
         script = (ROOT / "scripts" / "ci" / "build-amiga-package.sh").read_text(
             encoding="utf-8"

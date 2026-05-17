@@ -19,6 +19,11 @@ XDFTOOL ?= $(shell command -v xdftool 2>/dev/null)
 HOST_BIN := $(BUILD_DIR)/host/$(APP_NAME)-host
 HOST_OUTPUT := $(BUILD_DIR)/host/output.txt
 AMIGA_BIN := $(BUILD_DIR)/amiga/$(APP_NAME)
+PACKAGE_FILES := $(PACKAGE_DIR)/$(APP_NAME) \
+	$(PACKAGE_DIR)/$(APP_NAME).info \
+	$(PACKAGE_DIR)/README.txt \
+	$(PACKAGE_DIR)/VERSION \
+	$(PACKAGE_DIR)/AmiChatGPT.conf
 
 .PHONY: all host-build host-test test amiga package package-dir archive adf clean
 
@@ -46,17 +51,18 @@ $(AMIGA_BIN): src/main.c VERSION | $(BUILD_DIR)/amiga
 
 package: package-dir archive adf
 
-package-dir: $(PACKAGE_DIR)/$(APP_NAME)
+package-dir: $(PACKAGE_FILES)
 
-$(PACKAGE_DIR)/$(APP_NAME): $(AMIGA_BIN) packaging/README.txt VERSION | $(DIST_DIR)
+$(PACKAGE_FILES): $(AMIGA_BIN) packaging/$(APP_NAME).info packaging/README.txt VERSION | $(DIST_DIR)
 	rm -rf $(PACKAGE_DIR)
 	mkdir -p $(PACKAGE_DIR)
 	cp $(AMIGA_BIN) $(PACKAGE_DIR)/$(APP_NAME)
+	cp packaging/$(APP_NAME).info $(PACKAGE_DIR)/$(APP_NAME).info
 	cp packaging/README.txt $(PACKAGE_DIR)/README.txt
 	cp VERSION $(PACKAGE_DIR)/VERSION
 	printf "HOST=192.168.1.50\nPORT=6464\nWIDTH=72\n" > $(PACKAGE_DIR)/AmiChatGPT.conf
 
-archive: $(PACKAGE_DIR)/$(APP_NAME)
+archive: $(PACKAGE_FILES)
 	@if [ -n "$(LHA)" ]; then \
 		rm -f "$(DIST_DIR)/$(APP_NAME)-$(VERSION).lha"; \
 		(cd "$(DIST_DIR)" && "$(LHA)" a "$(APP_NAME)-$(VERSION).lha" "$(APP_NAME)-$(VERSION)" >/dev/null); \
@@ -69,11 +75,12 @@ archive: $(PACKAGE_DIR)/$(APP_NAME)
 
 adf: $(ADF_IMAGE)
 
-$(ADF_IMAGE): $(PACKAGE_DIR)/$(APP_NAME)
+$(ADF_IMAGE): $(PACKAGE_FILES)
 	@if [ -n "$(XDFTOOL)" ]; then \
 		rm -f "$(ADF_IMAGE)"; \
 		"$(XDFTOOL)" -f "$(ADF_IMAGE)" format "$(APP_NAME)" \
 			+ write "$(PACKAGE_DIR)/$(APP_NAME)" \
+			+ write "$(PACKAGE_DIR)/$(APP_NAME).info" \
 			+ write "$(PACKAGE_DIR)/README.txt" \
 			+ write "$(PACKAGE_DIR)/VERSION" \
 			+ write "$(PACKAGE_DIR)/AmiChatGPT.conf" \

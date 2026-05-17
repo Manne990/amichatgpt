@@ -52,6 +52,8 @@ Outputs are written to `dist/`:
 - `dist/AmiChatGPT-0.1.0.lha` - LHA archive if `lha` is available
 - `dist/AmiChatGPT-0.1.0.tar.gz` - fallback host archive when `lha` is not available
 
+The package includes `AmiChatGPT.info`, so Workbench can show the application icon next to the executable.
+
 ## Create an ADF Locally
 
 Install `amitools` and run:
@@ -69,7 +71,7 @@ The simplest path is to download the GitHub Actions artifact and use one of thes
 - Mount `AmiChatGPT-0.1.0/` as a directory or hard drive in FS-UAE, WinUAE, or Amiberry.
 - Copy/extract `AmiChatGPT-0.1.0.lha` inside an Amiga environment.
 
-Then run `AmiChatGPT` from Shell. Workbench icon packaging will come with the GUI milestone.
+Then run `AmiChatGPT` from Shell or open the application icon from Workbench.
 
 ## Bridge
 
