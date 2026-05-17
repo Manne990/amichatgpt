@@ -10,7 +10,7 @@ HOST_CC ?= cc
 HOST_CFLAGS ?= -std=c99 -Wall -Wextra -pedantic -O2
 
 AMIGA_CC ?= m68k-amigaos-gcc
-AMIGA_CFLAGS ?= -m68000 -Os -Wall -Wextra
+AMIGA_CFLAGS ?= -m68000 -Os -Wall -Wextra -DAMIGA_BUILD
 AMIGA_LDFLAGS ?= -noixemul
 
 LHA ?= $(shell command -v lha 2>/dev/null)

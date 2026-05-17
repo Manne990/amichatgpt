@@ -71,7 +71,7 @@ The simplest path is to download the GitHub Actions artifact and use one of thes
 - Mount `AmiChatGPT-0.1.0/` as a directory or hard drive in FS-UAE, WinUAE, or Amiberry.
 - Copy/extract `AmiChatGPT-0.1.0.lha` inside an Amiga environment.
 
-Then run `AmiChatGPT` from Shell or open the application icon from Workbench.
+Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current scaffold opens a small console window so Workbench launches are visible before the native GUI is implemented.
 
 ## Bridge
 

@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+import struct
 import unittest
 
 
@@ -26,9 +27,27 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertTrue(icon.exists())
         self.assertGreater(icon.stat().st_size, 0)
 
+        data = icon.read_bytes()
+        magic, version = struct.unpack_from(">HH", data, 0)
+        width, height = struct.unpack_from(">HH", data, 12)
+        icon_type = data[48]
+        stack_size = struct.unpack_from(">I", data, 68)[0]
+
+        self.assertEqual(magic, 0xE310)
+        self.assertEqual(version, 1)
+        self.assertEqual((width, height), (62, 56))
+        self.assertEqual(icon_type, 3)
+        self.assertGreaterEqual(stack_size, 32768)
+
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         self.assertIn("packaging/$(APP_NAME).info", makefile)
         self.assertIn("$(PACKAGE_DIR)/$(APP_NAME).info", makefile)
+
+    def test_amiga_build_opens_visible_workbench_console(self):
+        source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        self.assertIn("AMIGA_BUILD", makefile)
+        self.assertIn("CON:40/40/560/145/AmiChatGPT/CLOSE/WAIT", source)
 
     def test_ci_build_script_sets_toolchain_path(self):
         script = (ROOT / "scripts" / "ci" / "build-amiga-package.sh").read_text(
