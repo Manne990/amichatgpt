@@ -1,0 +1,8 @@
+build/
+dist/
+.DS_Store
+*.o
+*.adf
+*.lha
+*.tar.gz
+

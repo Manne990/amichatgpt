@@ -1,0 +1,56 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  host-test:
+    name: Host tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build and smoke test host binary
+        run: make host-test
+
+      - name: Run metadata tests
+        run: python3 -m unittest discover -s tests
+
+  amiga-package:
+    name: Amiga package
+    runs-on: ubuntu-latest
+    needs: host-test
+    env:
+      AMIGA_GCC_IMAGE: amigadev/crosstools:m68k-amigaos
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build m68k package
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD:/work" \
+            -w /work \
+            "$AMIGA_GCC_IMAGE" \
+            bash -lc 'm68k-amigaos-gcc --version && make clean package'
+
+      - name: Install ADF tooling
+        run: python3 -m pip install --user amitools
+
+      - name: Build ADF image
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          make adf
+          ls -la dist
+
+      - name: Upload emulator package
+        uses: actions/upload-artifact@v4
+        with:
+          name: AmiChatGPT-${{ github.sha }}
+          path: |
+            dist/AmiChatGPT-*
+
