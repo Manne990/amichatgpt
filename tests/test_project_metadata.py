@@ -31,12 +31,16 @@ class ProjectMetadataTest(unittest.TestCase):
         magic, version = struct.unpack_from(">HH", data, 0)
         width, height = struct.unpack_from(">HH", data, 12)
         icon_type = data[48]
-        stack_size = struct.unpack_from(">I", data, 68)[0]
+        drawer_data = struct.unpack_from(">I", data, 66)[0]
+        tool_window = struct.unpack_from(">I", data, 70)[0]
+        stack_size = struct.unpack_from(">I", data, 74)[0]
 
         self.assertEqual(magic, 0xE310)
         self.assertEqual(version, 1)
         self.assertEqual((width, height), (62, 56))
         self.assertEqual(icon_type, 3)
+        self.assertEqual(drawer_data, 0)
+        self.assertEqual(tool_window, 0)
         self.assertGreaterEqual(stack_size, 32768)
 
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
