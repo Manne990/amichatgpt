@@ -37,11 +37,12 @@ The CI build uses the `amigadev/crosstools:m68k-amigaos` Docker image for the Am
 
 ```sh
 docker run --rm \
-  --user "$(id -u):$(id -g)" \
   -v "$PWD:/work" \
   -w /work \
+  -e USER="$(id -u)" \
+  -e GROUP="$(id -g)" \
   amigadev/crosstools:m68k-amigaos \
-  bash -lc 'make clean package'
+  bash -lc 'bash scripts/ci/build-amiga-package.sh'
 ```
 
 Outputs are written to `dist/`:
@@ -79,4 +80,3 @@ chatgpt64 start --terminal ascii --width 72
 ```
 
 The first networked version will connect to the bridge host and port defined in ToolTypes or CLI arguments.
-

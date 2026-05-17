@@ -32,11 +32,13 @@ jobs:
       - name: Build m68k package
         run: |
           docker run --rm \
-            --user "$(id -u):$(id -g)" \
             -v "$PWD:/work" \
             -w /work \
+            -e USER="$(id -u)" \
+            -e GROUP="$(id -g)" \
             "$AMIGA_GCC_IMAGE" \
-            bash -lc 'm68k-amigaos-gcc --version && make clean package'
+            bash -lc 'bash scripts/ci/build-amiga-package.sh'
+          sudo chown -R "$(id -u):$(id -g)" build dist
 
       - name: Install ADF tooling
         run: python3 -m pip install --user amitools
@@ -53,4 +55,3 @@ jobs:
           name: AmiChatGPT-${{ github.sha }}
           path: |
             dist/AmiChatGPT-*
-
