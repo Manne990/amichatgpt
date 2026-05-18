@@ -34,17 +34,16 @@ struct Library *GadToolsBase = NULL;
 #define INPUT_TEXT_LEN 128
 #define INPUT_LINE_COUNT 3
 
-#define WINDOW_MIN_WIDTH 420
-#define WINDOW_MIN_HEIGHT 240
+#define WINDOW_MIN_WIDTH 360
+#define WINDOW_MIN_HEIGHT 220
 #define WINDOW_DEFAULT_WIDTH 560
 #define WINDOW_DEFAULT_HEIGHT 285
 #define UI_MARGIN 12
-#define UI_TOP 18
 #define UI_GAP 8
 #define INPUT_LINE_HEIGHT 16
 #define INPUT_LINE_GAP 3
 #define STATUS_HEIGHT 16
-#define SEND_BUTTON_WIDTH 74
+#define SEND_BUTTON_WIDTH 82
 
 #define GID_TRANSCRIPT 1
 #define GID_INPUT_1 2
@@ -160,50 +159,61 @@ static void refresh_transcript(struct AppUi *ui)
 
 static void layout_gadgets(struct AppUi *ui)
 {
-    WORD window_width;
-    WORD window_height;
+    WORD inner_left;
+    WORD inner_top;
+    WORD inner_right;
+    WORD inner_bottom;
     WORD content_width;
     WORD transcript_height;
+    WORD transcript_top;
     WORD input_top;
     WORD input_width;
     WORD input_area_height;
     WORD button_left;
     WORD status_top;
     WORD status_width;
+    WORD text_line_height;
     UWORD index;
 
     if (ui->window == NULL) {
         return;
     }
 
-    window_width = ui->window->Width;
-    window_height = ui->window->Height;
-    if (window_width < WINDOW_MIN_WIDTH) {
-        window_width = WINDOW_MIN_WIDTH;
-    }
-    if (window_height < WINDOW_MIN_HEIGHT) {
-        window_height = WINDOW_MIN_HEIGHT;
-    }
+    inner_left = ui->window->BorderLeft + UI_MARGIN;
+    inner_top = ui->window->BorderTop + UI_MARGIN;
+    inner_right = ui->window->Width - ui->window->BorderRight - UI_MARGIN;
+    inner_bottom = ui->window->Height - ui->window->BorderBottom - UI_MARGIN;
 
-    content_width = window_width - (UI_MARGIN * 2);
+    content_width = inner_right - inner_left;
+    if (content_width < 1) {
+        content_width = 1;
+    }
     input_area_height = (INPUT_LINE_COUNT * INPUT_LINE_HEIGHT) +
         ((INPUT_LINE_COUNT - 1) * INPUT_LINE_GAP);
-    status_top = window_height - UI_MARGIN - STATUS_HEIGHT;
+    status_top = inner_bottom - STATUS_HEIGHT;
     input_top = status_top - UI_GAP - input_area_height;
-    transcript_height = input_top - UI_TOP - UI_GAP;
+    transcript_top = inner_top;
+    transcript_height = input_top - transcript_top - UI_GAP;
 
     if (transcript_height < 48) {
         transcript_height = 48;
     }
 
-    button_left = window_width - UI_MARGIN - SEND_BUTTON_WIDTH;
-    input_width = button_left - UI_MARGIN - UI_GAP;
+    button_left = inner_right - SEND_BUTTON_WIDTH;
+    input_width = button_left - inner_left - UI_GAP;
+    if (input_width < 80) {
+        input_width = 80;
+    }
     status_width = content_width;
     if (status_width > 320) {
         status_width = 320;
     }
 
-    ui->visible_transcript_lines = transcript_height / 12;
+    text_line_height = 12;
+    if (ui->window->RPort != NULL && ui->window->RPort->TxHeight > 0) {
+        text_line_height = ui->window->RPort->TxHeight + 2;
+    }
+    ui->visible_transcript_lines = transcript_height / text_line_height;
     if (ui->visible_transcript_lines == 0) {
         ui->visible_transcript_lines = 1;
     }
@@ -213,9 +223,9 @@ static void layout_gadgets(struct AppUi *ui)
         ui->window,
         NULL,
         GA_Left,
-        UI_MARGIN,
+        inner_left,
         GA_Top,
-        UI_TOP,
+        transcript_top,
         GA_Width,
         content_width,
         GA_Height,
@@ -228,7 +238,7 @@ static void layout_gadgets(struct AppUi *ui)
             ui->window,
             NULL,
             GA_Left,
-            UI_MARGIN,
+            inner_left,
             GA_Top,
             input_top + (index * (INPUT_LINE_HEIGHT + INPUT_LINE_GAP)),
             GA_Width,
@@ -257,7 +267,7 @@ static void layout_gadgets(struct AppUi *ui)
         ui->window,
         NULL,
         GA_Left,
-        UI_MARGIN,
+        inner_left,
         GA_Top,
         status_top,
         GA_Width,
@@ -357,7 +367,7 @@ static BOOL create_gadgets(struct AppUi *ui)
         return FALSE;
     }
 
-    init_new_gadget(&ng, ui->visual_info, UI_MARGIN, UI_TOP, 536, 164, NULL, GID_TRANSCRIPT);
+    init_new_gadget(&ng, ui->visual_info, UI_MARGIN, UI_MARGIN, 536, 164, NULL, GID_TRANSCRIPT);
     tail = CreateGadget(
         LISTVIEW_KIND,
         tail,
@@ -450,6 +460,12 @@ static BOOL open_app_window(struct AppUi *ui)
         WINDOW_MIN_WIDTH,
         WA_MinHeight,
         WINDOW_MIN_HEIGHT,
+        WA_MaxWidth,
+        ui->screen->Width,
+        WA_MaxHeight,
+        ui->screen->Height,
+        WA_SizeBBottom,
+        TRUE,
         WA_CloseGadget,
         TRUE,
         WA_Activate,
