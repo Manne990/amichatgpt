@@ -688,6 +688,11 @@ static void layout_gadgets(struct AppUi *ui)
         GA_Height,
         button_height,
         TAG_DONE);
+    /* BUTTON_KIND keeps its original rectangle unless the Intuition fields move too. */
+    ui->send_gadget->LeftEdge = button_left;
+    ui->send_gadget->TopEdge = button_top;
+    ui->send_gadget->Width = SEND_BUTTON_WIDTH;
+    ui->send_gadget->Height = button_height;
 
     RefreshGList(ui->gadgets, ui->window, NULL, -1);
     if (ui->input_scroll_gadget != NULL) {
@@ -939,8 +944,7 @@ static BOOL create_gadgets(struct AppUi *ui)
     }
     ui->transcript_gadget = tail;
 
-    init_new_gadget(&ng, ui->visual_info, 200, 100, SEND_BUTTON_WIDTH, 54, "Send", GID_SEND);
-    //init_new_gadget(&ng, ui->visual_info, 486, 194, SEND_BUTTON_WIDTH, 54, "Send", GID_SEND);
+    init_new_gadget(&ng, ui->visual_info, 486, 194, SEND_BUTTON_WIDTH, 54, "Send", GID_SEND);
     tail = CreateGadget(BUTTON_KIND, tail, &ng, TAG_DONE);
     if (tail == NULL) {
         return FALSE;
