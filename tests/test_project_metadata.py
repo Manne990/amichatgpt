@@ -30,6 +30,7 @@ class ProjectMetadataTest(unittest.TestCase):
         data = icon.read_bytes()
         magic, version = struct.unpack_from(">HH", data, 0)
         width, height = struct.unpack_from(">HH", data, 12)
+        select_render = struct.unpack_from(">I", data, 26)[0]
         icon_type = data[48]
         drawer_data = struct.unpack_from(">I", data, 66)[0]
         tool_window = struct.unpack_from(">I", data, 70)[0]
@@ -41,6 +42,7 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertGreater(height, 0)
         self.assertLessEqual(width, 80)
         self.assertLessEqual(height, 80)
+        self.assertEqual(select_render, 0)
         self.assertEqual(icon_type, 3)
         self.assertEqual(drawer_data, 0)
         self.assertEqual(tool_window, 0)
@@ -72,15 +74,19 @@ class ProjectMetadataTest(unittest.TestCase):
             data[image_data_offset : image_data_offset + image_data_size],
             bytes(image_data_size),
         )
-        self.assertLess(selected_image_offset + image_header_size, len(data))
-        selected_width, selected_height, selected_depth = struct.unpack_from(
-            ">HHH", data, selected_image_offset + 4
-        )
-        self.assertEqual((selected_width, selected_height, selected_depth), (width, height, depth))
-        selected_data_offset = selected_image_offset + image_header_size
-        selected_data = data[selected_data_offset : selected_data_offset + image_data_size]
-        self.assertGreaterEqual(len(selected_data), image_data_size - 2)
-        self.assertNotEqual(selected_data, bytes(len(selected_data)))
+        select_render = struct.unpack_from(">I", data, 26)[0]
+        if select_render == 0:
+            self.assertEqual(selected_image_offset, len(data))
+        else:
+            self.assertLess(selected_image_offset + image_header_size, len(data))
+            selected_width, selected_height, selected_depth = struct.unpack_from(
+                ">HHH", data, selected_image_offset + 4
+            )
+            self.assertEqual((selected_width, selected_height, selected_depth), (width, height, depth))
+            selected_data_offset = selected_image_offset + image_header_size
+            selected_data = data[selected_data_offset : selected_data_offset + image_data_size]
+            self.assertGreaterEqual(len(selected_data), image_data_size - 2)
+            self.assertNotEqual(selected_data, bytes(len(selected_data)))
 
     def test_amiga_build_opens_visible_workbench_console(self):
         source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")
