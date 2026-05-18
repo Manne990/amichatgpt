@@ -79,6 +79,10 @@ Class *TextFieldClass = NULL;
 
 #define INVALID_BRIDGE_SOCKET -1L
 
+#ifndef SELECTUP
+#define SELECTUP 0xE8
+#endif
+
 struct BridgeConfig {
     char host[CONFIG_HOST_LEN];
     UWORD port;
@@ -1287,7 +1291,7 @@ static BOOL open_app_window(struct AppUi *ui)
         TRUE,
         WA_IDCMP,
         IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_NEWSIZE | IDCMP_RAWKEY |
-            IDCMP_VANILLAKEY | BUTTONIDCMP | LISTVIEWIDCMP,
+            IDCMP_VANILLAKEY | IDCMP_MOUSEBUTTONS | BUTTONIDCMP | LISTVIEWIDCMP,
         TAG_DONE);
 
     if (ui->window == NULL) {
@@ -1516,6 +1520,15 @@ static BOOL build_bridge_prompt(const char *input_text, char *prompt, ULONG prom
     return truncated;
 }
 
+static BOOL point_hits_send_button(struct AppUi *ui, WORD x, WORD y)
+{
+    struct AppLayout *layout;
+
+    layout = &ui->layout;
+    return x >= layout->send_left && x < layout->send_left + layout->send_width &&
+           y >= layout->send_top && y < layout->send_top + layout->send_height;
+}
+
 static void handle_send(struct AppUi *ui)
 {
     char *input_text;
@@ -1540,6 +1553,8 @@ static void handle_send(struct AppUi *ui)
     if (was_truncated) {
         transcript_append(&ui->transcript, "AmiChatGPT: prompt was truncated before sending.");
     }
+    transcript_append(&ui->transcript, "AmiChatGPT: waiting for bridge reply...");
+    refresh_transcript(ui);
 
     if (!ui->bridge_connected) {
         connect_bridge(ui);
@@ -1569,7 +1584,10 @@ static void run_event_loop(struct AppUi *ui)
     BOOL running;
     struct IntuiMessage *message;
     ULONG message_class;
+    UWORD message_code;
     UWORD gadget_id;
+    WORD mouse_x;
+    WORD mouse_y;
     struct Gadget *gadget;
 
     running = TRUE;
@@ -1578,6 +1596,9 @@ static void run_event_loop(struct AppUi *ui)
 
         while ((message = GT_GetIMsg(ui->window->UserPort)) != NULL) {
             message_class = message->Class;
+            message_code = message->Code;
+            mouse_x = message->MouseX;
+            mouse_y = message->MouseY;
             gadget_id = 0;
             if (message->IAddress != NULL) {
                 gadget = (struct Gadget *)message->IAddress;
@@ -1606,6 +1627,12 @@ static void run_event_loop(struct AppUi *ui)
 
                 case IDCMP_GADGETUP:
                     if (gadget_id == GID_SEND) {
+                        handle_send(ui);
+                    }
+                    break;
+
+                case IDCMP_MOUSEBUTTONS:
+                    if (message_code == SELECTUP && point_hits_send_button(ui, mouse_x, mouse_y)) {
                         handle_send(ui);
                     }
                     break;
