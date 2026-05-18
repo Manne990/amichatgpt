@@ -599,7 +599,7 @@ static void layout_gadgets(struct AppUi *ui)
     }
 
     button_left = inner_right - SEND_BUTTON_RIGHT_INSET - SEND_BUTTON_WIDTH;
-    button_height = input_area_height - (SEND_BUTTON_VERTICAL_INSET * 2);
+    button_height = input_area_height;// - (SEND_BUTTON_VERTICAL_INSET * 2);
     if (button_height < text_line_height) {
         button_height = text_line_height;
     }
