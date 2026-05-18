@@ -89,6 +89,8 @@ class ProjectMetadataTest(unittest.TestCase):
         occupied_width = max(occupied_x) - min(occupied_x) + 1
         occupied_height = max(occupied_y) - min(occupied_y) + 1
         self.assertGreaterEqual(occupied_width, occupied_height * 3 // 2)
+        self.assertLessEqual(occupied_width, 64)
+        self.assertLessEqual(occupied_height, 32)
 
         select_render = struct.unpack_from(">I", data, 26)[0]
         if select_render == 0:
