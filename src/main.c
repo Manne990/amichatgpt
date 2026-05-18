@@ -38,10 +38,12 @@ Class *TextFieldClass = NULL;
 #define CHAT_LINE_COUNT 48
 #define CHAT_LINE_LEN 96
 #define INPUT_TEXT_LEN 2048
-#define INPUT_VISIBLE_LINES 5
+#define INPUT_VISIBLE_LINES 4
+#define INPUT_MIN_VISIBLE_LINES 3
+#define TRANSCRIPT_MIN_VISIBLE_LINES 4
 
 #define WINDOW_MIN_WIDTH 360
-#define WINDOW_MIN_HEIGHT 250
+#define WINDOW_MIN_HEIGHT 260
 #define WINDOW_DEFAULT_WIDTH 560
 #define WINDOW_DEFAULT_HEIGHT 315
 #define UI_MARGIN 12
@@ -50,6 +52,7 @@ Class *TextFieldClass = NULL;
 #define INPUT_SCROLL_GAP 3
 #define STATUS_HEIGHT 16
 #define SEND_BUTTON_WIDTH 82
+#define SEND_BUTTON_HEIGHT 26
 
 #define GID_TRANSCRIPT 1
 #define GID_INPUT 2
@@ -181,6 +184,29 @@ static WORD get_text_line_height(struct AppUi *ui)
     return height;
 }
 
+static WORD line_box_height(WORD line_height, WORD visible_lines)
+{
+    return (visible_lines * line_height) + 6;
+}
+
+static void clear_window_content(struct AppUi *ui)
+{
+    struct RastPort *rast_port;
+
+    if (ui->window == NULL || ui->window->RPort == NULL || ui->screen == NULL) {
+        return;
+    }
+
+    rast_port = ui->window->RPort;
+    SetAPen(rast_port, ui->screen->BlockPen);
+    RectFill(
+        rast_port,
+        ui->window->BorderLeft,
+        ui->window->BorderTop,
+        ui->window->Width - ui->window->BorderRight - 1,
+        ui->window->Height - ui->window->BorderBottom - 1);
+}
+
 static Class *open_textfield_class(void)
 {
     register struct Library *base __asm("a6");
@@ -210,13 +236,18 @@ static void layout_gadgets(struct AppUi *ui)
     WORD inner_top;
     WORD inner_right;
     WORD inner_bottom;
+    WORD available_height;
     WORD content_width;
     WORD transcript_height;
     WORD transcript_top;
     WORD input_top;
     WORD input_width;
     WORD input_area_height;
+    WORD min_input_height;
+    WORD min_transcript_height;
+    WORD max_input_height;
     WORD button_left;
+    WORD button_top;
     WORD status_top;
     WORD status_width;
     WORD text_line_height;
@@ -235,31 +266,50 @@ static void layout_gadgets(struct AppUi *ui)
     if (content_width < 1) {
         content_width = 1;
     }
+    available_height = inner_bottom - inner_top;
+    if (available_height < 1) {
+        available_height = 1;
+    }
+
     text_line_height = get_text_line_height(ui);
-    input_area_height = (INPUT_VISIBLE_LINES * text_line_height) + 6;
+    input_area_height = line_box_height(text_line_height, INPUT_VISIBLE_LINES);
+    min_input_height = line_box_height(text_line_height, INPUT_MIN_VISIBLE_LINES);
+    min_transcript_height = line_box_height(text_line_height, TRANSCRIPT_MIN_VISIBLE_LINES);
+    max_input_height =
+        available_height - min_transcript_height - STATUS_HEIGHT - (UI_GAP * 2);
+    if (max_input_height < min_input_height) {
+        max_input_height = min_input_height;
+    }
+    if (input_area_height > max_input_height) {
+        input_area_height = max_input_height;
+    }
+
     status_top = inner_bottom - STATUS_HEIGHT;
     input_top = status_top - UI_GAP - input_area_height;
     transcript_top = inner_top;
     transcript_height = input_top - transcript_top - UI_GAP;
 
-    if (transcript_height < 48) {
-        transcript_height = 48;
+    if (transcript_height < min_transcript_height) {
+        transcript_height = min_transcript_height;
     }
 
     button_left = inner_right - SEND_BUTTON_WIDTH;
+    button_top = input_top + input_area_height - SEND_BUTTON_HEIGHT;
     input_width = button_left - inner_left - UI_GAP - INPUT_SCROLL_WIDTH - INPUT_SCROLL_GAP;
     if (input_width < 80) {
         input_width = 80;
     }
-    status_width = content_width;
-    if (status_width > 320) {
-        status_width = 320;
+    status_width = button_left - inner_left - UI_GAP;
+    if (status_width < 80) {
+        status_width = content_width;
     }
 
     ui->visible_transcript_lines = transcript_height / text_line_height;
     if (ui->visible_transcript_lines == 0) {
         ui->visible_transcript_lines = 1;
     }
+
+    clear_window_content(ui);
 
     GT_SetGadgetAttrs(
         ui->transcript_gadget,
@@ -327,11 +377,11 @@ static void layout_gadgets(struct AppUi *ui)
         GA_Left,
         button_left,
         GA_Top,
-        input_top,
+        button_top,
         GA_Width,
         SEND_BUTTON_WIDTH,
         GA_Height,
-        input_area_height,
+        SEND_BUTTON_HEIGHT,
         TAG_DONE);
 
     GT_SetGadgetAttrs(
