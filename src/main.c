@@ -52,8 +52,9 @@ Class *TextFieldClass = NULL;
 #define INPUT_SCROLL_WIDTH 16
 #define INPUT_SCROLL_GAP 3
 #define SEND_BUTTON_WIDTH 82
-#define SEND_BUTTON_RIGHT_INSET 18
-#define SEND_BUTTON_TOP_ADJUST 8
+#define SEND_BUTTON_RIGHT_INSET 44
+#define SEND_BUTTON_VERTICAL_INSET 8
+#define SEND_BUTTON_TOP_NUDGE 12
 
 #define GID_TRANSCRIPT 1
 #define GID_INPUT 2
@@ -249,6 +250,7 @@ static void layout_gadgets(struct AppUi *ui)
     WORD max_input_height;
     WORD button_left;
     WORD button_top;
+    WORD button_height;
     WORD text_line_height;
     BOOL needs_refresh;
 
@@ -291,7 +293,11 @@ static void layout_gadgets(struct AppUi *ui)
     }
 
     button_left = inner_right - SEND_BUTTON_RIGHT_INSET - SEND_BUTTON_WIDTH;
-    button_top = input_top - SEND_BUTTON_TOP_ADJUST;
+    button_height = input_area_height - (SEND_BUTTON_VERTICAL_INSET * 2);
+    if (button_height < text_line_height + 8) {
+        button_height = text_line_height + 8;
+    }
+    button_top = input_top + SEND_BUTTON_VERTICAL_INSET - SEND_BUTTON_TOP_NUDGE;
     input_width = button_left - inner_left - UI_GAP - INPUT_SCROLL_WIDTH - INPUT_SCROLL_GAP;
     if (input_width < 80) {
         input_width = 80;
@@ -374,7 +380,7 @@ static void layout_gadgets(struct AppUi *ui)
         GA_Width,
         SEND_BUTTON_WIDTH,
         GA_Height,
-        input_area_height,
+        button_height,
         TAG_DONE);
 
     RefreshGList(ui->gadgets, ui->window, NULL, -1);
