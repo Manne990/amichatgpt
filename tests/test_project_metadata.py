@@ -47,6 +47,35 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("packaging/$(APP_NAME).info", makefile)
         self.assertIn("$(PACKAGE_DIR)/$(APP_NAME).info", makefile)
 
+    def test_workbench_icon_motif_uses_wide_canvas(self):
+        data = (ROOT / "packaging" / "AmiChatGPT.info").read_bytes()
+        width, height, depth = struct.unpack_from(">HHH", data, 82)
+        row_words = (width + 15) // 16
+        image_data_offset = 98
+        pixels = [[0 for _ in range(width)] for _ in range(height)]
+
+        for plane in range(depth):
+            base = image_data_offset + plane * height * row_words * 2
+            for y in range(height):
+                for word_index in range(row_words):
+                    word = struct.unpack_from(
+                        ">H", data, base + (y * row_words + word_index) * 2
+                    )[0]
+                    for bit in range(16):
+                        x = word_index * 16 + bit
+                        if x < width and word & (1 << (15 - bit)):
+                            pixels[y][x] |= 1 << plane
+
+        motif_pixels = [
+            (x, y)
+            for y in range(8, 48)
+            for x in range(5, 57)
+            if pixels[y][x] in (1, 3)
+        ]
+        motif_width = max(x for x, _ in motif_pixels) - min(x for x, _ in motif_pixels) + 1
+
+        self.assertGreaterEqual(motif_width, 46)
+
     def test_amiga_build_opens_visible_workbench_console(self):
         source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
