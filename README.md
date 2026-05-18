@@ -8,14 +8,14 @@ The app does not talk directly to OpenAI. It connects to a local ChatGPT64 bridg
 AmiChatGPT -> ChatGPT64 bridge -> OpenAI API
 ```
 
-This repository currently contains the first native GUI milestones: a small m68k Amiga executable, configuration loading, host-side tests, and packaging that produces emulator-friendly artifacts.
+This repository currently contains the first native GUI milestones: a small m68k Amiga executable, configuration loading, a first TCP bridge connection check, host-side tests, and packaging that produces emulator-friendly artifacts.
 
 ## Target
 
 - AmigaOS / Workbench 3.0 or 3.1
 - m68k / 68000-compatible executable
 - no FPU requirement
-- future network support through `bsdsocket.library`
+- TCP stack exposing `bsdsocket.library`
 - ChatGPT64 running on another computer
 
 See [REQUIREMENTS.md](REQUIREMENTS.md) for the full product and technical requirements.
@@ -72,7 +72,7 @@ The simplest path is to download the GitHub Actions artifact and use one of thes
 - Mount `AmiChatGPT-0.1.0/` as a directory or hard drive in FS-UAE, WinUAE, or Amiberry.
 - Copy/extract `AmiChatGPT-0.1.0.lha` inside an Amiga environment.
 
-Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current build opens a native, resizable Workbench window with a scrollable transcript, a multiline textfield input editor with vertical scrolling, and a Send button. It reads bridge settings from built-in defaults, `AmiChatGPT.conf`, Workbench ToolTypes, and CLI arguments. It is still an offline prototype; bridge networking comes next.
+Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current build opens a native, resizable Workbench window with a scrollable transcript, a multiline textfield input editor with vertical scrolling, and a Send button. It reads bridge settings from built-in defaults, `AmiChatGPT.conf`, Workbench ToolTypes, and CLI arguments. It tries to connect to the configured ChatGPT64 bridge over TCP and reports the connection status in the transcript. Sending prompts and receiving replies come next.
 
 Third-party notice: `textfield.gadget` 3.1 is Copyright (C) 1995 Mark Thomas. See `ThirdParty/textfield-license.txt` in the package.
 
@@ -84,7 +84,7 @@ Run ChatGPT64 on the bridge computer in ASCII mode:
 chatgpt64 start --terminal ascii --width 72
 ```
 
-The first networked version will connect to the bridge host and port shown in the transcript at startup.
+This build connects to the bridge host and port shown in the transcript at startup. The first send/receive version will use that connection to exchange prompts and replies.
 
 ## Configuration
 

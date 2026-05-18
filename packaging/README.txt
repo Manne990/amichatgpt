@@ -5,15 +5,17 @@ This is an early GUI build for the AmiChatGPT Workbench client.
 
 The current executable opens a native, resizable Workbench window with a
 scrollable transcript, a multiline textfield input editor, and a Send button.
-It reads bridge configuration, but it is still offline: TCP networking comes
-in the next milestone.
+It reads bridge configuration and tries to connect to the configured
+ChatGPT64 bridge over TCP. Sending prompts and receiving replies come in the
+next milestone.
 
 Target:
 - AmigaOS / Workbench 3.0 or 3.1
 - m68k / 68000-compatible CPU
 - no FPU requirement
 
-Future versions will connect to the ChatGPT64 bridge over plain TCP.
+This build connects to the ChatGPT64 bridge over plain TCP and reports the
+connection status in the transcript.
 
 Bundled runtime:
 - Gadgets/textfield.gadget provides the multiline prompt editor.

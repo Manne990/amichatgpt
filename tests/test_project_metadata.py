@@ -161,6 +161,23 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("Workbench ToolTypes", readme)
         self.assertIn("AmiChatGPT --host", package_readme)
 
+    def test_tcp_connect_milestone_is_implemented(self):
+        source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        package_readme = (ROOT / "packaging" / "README.txt").read_text(encoding="utf-8")
+
+        self.assertIn("bsdsocket.library", source)
+        self.assertIn("SocketBase", source)
+        self.assertIn("socket(AF_INET, SOCK_STREAM", source)
+        self.assertIn("connect(", source)
+        self.assertIn("CloseSocket", source)
+        self.assertIn("inet_addr", source)
+        self.assertIn("Network: ", source)
+        self.assertIn("connected to %s:%u", source)
+        self.assertIn("TCP stack not available", source)
+        self.assertIn("tries to connect to the configured ChatGPT64 bridge", readme)
+        self.assertIn("tries to connect to the configured", package_readme)
+
     def test_ci_build_script_sets_toolchain_path(self):
         script = (ROOT / "scripts" / "ci" / "build-amiga-package.sh").read_text(
             encoding="utf-8"

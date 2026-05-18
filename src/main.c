@@ -31,6 +31,10 @@
 #include <proto/gadtools.h>
 #include <proto/graphics.h>
 #include <proto/intuition.h>
+#include <proto/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <workbench/icon.h>
 #include <workbench/startup.h>
 
@@ -38,6 +42,7 @@ struct IntuitionBase *IntuitionBase = NULL;
 struct GfxBase *GfxBase = NULL;
 struct Library *GadToolsBase = NULL;
 struct Library *IconBase = NULL;
+struct Library *SocketBase = NULL;
 struct Library *TextFieldBase = NULL;
 Class *TextFieldClass = NULL;
 
@@ -71,6 +76,8 @@ Class *TextFieldClass = NULL;
 #define GID_SEND 4
 #define GID_STATUS 5
 
+#define INVALID_BRIDGE_SOCKET -1L
+
 struct BridgeConfig {
     char host[CONFIG_HOST_LEN];
     UWORD port;
@@ -98,6 +105,8 @@ struct AppUi {
     struct Window *window;
     struct BridgeConfig config;
     struct ChatTranscript transcript;
+    LONG bridge_socket;
+    BOOL bridge_connected;
     WORD input_left;
     WORD input_top;
     WORD input_width;
@@ -710,7 +719,7 @@ static void add_initial_transcript(struct AppUi *ui)
 
     transcript_append(&ui->transcript, "AmiChatGPT " AMICHATGPT_VERSION);
     transcript_append(&ui->transcript, "Workbench 3.x GadTools GUI prototype.");
-    transcript_append(&ui->transcript, "Configuration ready. Bridge connection comes next.");
+    transcript_append(&ui->transcript, "Configuration ready. Connecting to bridge next.");
     transcript_append(&ui->transcript, "");
     transcript_append(&ui->transcript, "Type your message and press Send.");
     transcript_append(&ui->transcript, "");
@@ -727,6 +736,108 @@ static void add_initial_transcript(struct AppUi *ui)
     for (index = 0; index < ui->config.error_count; index++) {
         transcript_append_prefixed(&ui->transcript, "Config error: ", ui->config.errors[index]);
     }
+}
+
+static void append_network_message(struct AppUi *ui, const char *message)
+{
+    transcript_append_prefixed(&ui->transcript, "Network: ", message);
+    refresh_transcript(ui);
+}
+
+static void close_bridge_connection(struct AppUi *ui)
+{
+    if (ui->bridge_socket != INVALID_BRIDGE_SOCKET) {
+        CloseSocket(ui->bridge_socket);
+        ui->bridge_socket = INVALID_BRIDGE_SOCKET;
+    }
+    ui->bridge_connected = FALSE;
+}
+
+static BOOL open_socket_library(struct AppUi *ui)
+{
+    if (SocketBase != NULL) {
+        return TRUE;
+    }
+
+    SocketBase = OpenLibrary("bsdsocket.library", 4);
+    if (SocketBase == NULL) {
+        append_network_message(ui, "TCP stack not available (bsdsocket.library).");
+        set_status(ui, "TCP stack not available");
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static BOOL connect_bridge(struct AppUi *ui)
+{
+    struct sockaddr_in server_addr;
+    ULONG address;
+    LONG socket_handle;
+    char status_line[CHAT_LINE_LEN];
+
+    if (ui->bridge_connected) {
+        return TRUE;
+    }
+
+    if (!open_socket_library(ui)) {
+        return FALSE;
+    }
+
+    address = inet_addr(ui->config.host);
+    if (address == (ULONG)-1) {
+        append_network_message(ui, "HOST must be a numeric IPv4 address for this build.");
+        set_status(ui, "Invalid bridge host");
+        return FALSE;
+    }
+
+    socket_handle = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_handle < 0) {
+        append_network_message(ui, "Could not create TCP socket.");
+        set_status(ui, "Could not create socket");
+        return FALSE;
+    }
+
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_len = sizeof(server_addr);
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(ui->config.port);
+    server_addr.sin_addr.s_addr = address;
+
+    snprintf(
+        status_line,
+        sizeof(status_line),
+        "connecting to %s:%u...",
+        ui->config.host,
+        ui->config.port);
+    append_network_message(ui, status_line);
+
+    if (connect(socket_handle, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        CloseSocket(socket_handle);
+        snprintf(
+            status_line,
+            sizeof(status_line),
+            "could not connect to %s:%u.",
+            ui->config.host,
+            ui->config.port);
+        append_network_message(ui, status_line);
+        set_status(ui, "Not connected");
+        return FALSE;
+    }
+
+    ui->bridge_socket = socket_handle;
+    ui->bridge_connected = TRUE;
+
+    snprintf(
+        status_line,
+        sizeof(status_line),
+        "connected to %s:%u.",
+        ui->config.host,
+        ui->config.port);
+    append_network_message(ui, status_line);
+    set_status(ui, "Connected");
+
+    return TRUE;
 }
 
 static BOOL open_libraries(void)
@@ -752,6 +863,10 @@ static BOOL open_libraries(void)
 
 static void close_libraries(void)
 {
+    if (SocketBase != NULL) {
+        CloseLibrary(SocketBase);
+        SocketBase = NULL;
+    }
     if (TextFieldBase != NULL) {
         CloseLibrary(TextFieldBase);
         TextFieldBase = NULL;
@@ -982,6 +1097,7 @@ static BOOL open_app_window(struct AppUi *ui)
 
 static void close_app_ui(struct AppUi *ui)
 {
+    close_bridge_connection(ui);
     if (ui->window != NULL && ui->input_scroll_gadget != NULL) {
         RemoveGList(ui->window, ui->input_scroll_gadget, -1);
     }
@@ -1014,6 +1130,7 @@ static void close_app_ui(struct AppUi *ui)
 static BOOL open_app_ui(struct AppUi *ui, int argc, char **argv)
 {
     memset(ui, 0, sizeof(*ui));
+    ui->bridge_socket = INVALID_BRIDGE_SOCKET;
     load_config(&ui->config, argc, argv);
     transcript_init(&ui->transcript);
     add_initial_transcript(ui);
@@ -1035,6 +1152,8 @@ static BOOL open_app_ui(struct AppUi *ui, int argc, char **argv)
     if (!open_app_window(ui)) {
         return FALSE;
     }
+
+    connect_bridge(ui);
 
     return TRUE;
 }
@@ -1158,9 +1277,17 @@ static void handle_send(struct AppUi *ui)
     }
 
     append_input_to_transcript(&ui->transcript, input_text);
-    transcript_append(&ui->transcript, "AmiChatGPT: GUI step ready. Bridge comes next.");
+    if (!ui->bridge_connected) {
+        connect_bridge(ui);
+    }
+    if (ui->bridge_connected) {
+        transcript_append(&ui->transcript, "AmiChatGPT: Connected. Sending comes next.");
+        set_status(ui, "Connected");
+    } else {
+        transcript_append(&ui->transcript, "AmiChatGPT: Not connected. Check TCP stack and bridge.");
+        set_status(ui, "Not connected");
+    }
     refresh_transcript(ui);
-    set_status(ui, "Ready - not connected");
     clear_input_text(ui);
 
     FreeMem(input_text, allocated_size);
@@ -1253,7 +1380,7 @@ static void write_scaffold_message(FILE *out)
     fputs("  port: " DEFAULT_BRIDGE_PORT "\n", out);
     fputs("  width: " DEFAULT_TEXT_WIDTH "\n", out);
     fputs("\n", out);
-    fputs("Current milestone: configuration support, no networking yet.\n", out);
+    fputs("Current milestone: bridge TCP connect; sending comes next.\n", out);
 }
 
 int main(int argc, char **argv)
