@@ -31,9 +31,8 @@
 #include <proto/gadtools.h>
 #include <proto/graphics.h>
 #include <proto/intuition.h>
-#include <proto/socket.h>
-#include <arpa/inet.h>
 #include <netinet/in.h>
+#include <proto/socket.h>
 #include <sys/socket.h>
 #include <workbench/icon.h>
 #include <workbench/startup.h>
