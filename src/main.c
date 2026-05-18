@@ -553,6 +553,8 @@ static struct TagItem input_text_to_scroll[] = {
     {TAG_DONE, 0},
 };
 
+static BOOL create_gadgets(struct AppUi *ui);
+
 static void compute_app_layout(struct AppUi *ui)
 {
     struct AppLayout *layout;
@@ -649,39 +651,52 @@ static void compute_app_layout(struct AppUi *ui)
     }
 }
 
-static void layout_gadgets(struct AppUi *ui)
+static void remove_gadtools_gadgets(struct AppUi *ui)
+{
+    if (ui->window != NULL && ui->gadtools_added && ui->gadgets != NULL) {
+        RemoveGList(ui->window, ui->gadgets, -1);
+        ui->gadtools_added = FALSE;
+    }
+
+    if (ui->gadgets != NULL) {
+        FreeGadgets(ui->gadgets);
+        ui->gadgets = NULL;
+    }
+
+    ui->transcript_gadget = NULL;
+    ui->send_gadget = NULL;
+}
+
+static BOOL rebuild_gadtools_gadgets(struct AppUi *ui)
+{
+    remove_gadtools_gadgets(ui);
+
+    if (!create_gadgets(ui)) {
+        return FALSE;
+    }
+
+    if (ui->window != NULL && ui->gadgets != NULL) {
+        AddGList(ui->window, ui->gadgets, -1, -1, NULL);
+        ui->gadtools_added = TRUE;
+        RefreshGList(ui->gadgets, ui->window, NULL, -1);
+    }
+
+    return TRUE;
+}
+
+static BOOL layout_gadgets(struct AppUi *ui)
 {
     struct AppLayout *layout;
     BOOL needs_refresh;
 
     if (ui->window == NULL) {
-        return;
+        return FALSE;
     }
 
     compute_app_layout(ui);
     layout = &ui->layout;
 
     clear_window_content(ui);
-
-    if (ui->transcript_gadget != NULL) {
-        GT_SetGadgetAttrs(
-            ui->transcript_gadget,
-            ui->window,
-            NULL,
-            GA_Left,
-            layout->transcript_left,
-            GA_Top,
-            layout->transcript_top,
-            GA_Width,
-            layout->transcript_width,
-            GA_Height,
-            layout->transcript_height,
-            TAG_DONE);
-        ui->transcript_gadget->LeftEdge = layout->transcript_left;
-        ui->transcript_gadget->TopEdge = layout->transcript_top;
-        ui->transcript_gadget->Width = layout->transcript_width;
-        ui->transcript_gadget->Height = layout->transcript_height;
-    }
 
     if (ui->input_gadget != NULL) {
         needs_refresh = SetGadgetAttrs(
@@ -728,34 +743,16 @@ static void layout_gadgets(struct AppUi *ui)
         }
     }
 
-    if (ui->send_gadget != NULL) {
-        GT_SetGadgetAttrs(
-            ui->send_gadget,
-            ui->window,
-            NULL,
-            GA_Left,
-            layout->send_left,
-            GA_Top,
-            layout->send_top,
-            GA_Width,
-            layout->send_width,
-            GA_Height,
-            layout->send_height,
-            TAG_DONE);
-        /* BUTTON_KIND keeps its original rectangle unless the Intuition fields move too. */
-        ui->send_gadget->LeftEdge = layout->send_left;
-        ui->send_gadget->TopEdge = layout->send_top;
-        ui->send_gadget->Width = layout->send_width;
-        ui->send_gadget->Height = layout->send_height;
+    if (!rebuild_gadtools_gadgets(ui)) {
+        return FALSE;
     }
 
-    if (ui->gadtools_added && ui->gadgets != NULL) {
-        RefreshGList(ui->gadgets, ui->window, NULL, -1);
-    }
     if (ui->input_gadgets_added && ui->input_scroll_gadget != NULL) {
         RefreshGList(ui->input_scroll_gadget, ui->window, NULL, -1);
     }
     refresh_transcript(ui);
+
+    return TRUE;
 }
 
 static void set_status(struct AppUi *ui, const char *status)
@@ -1175,14 +1172,13 @@ static BOOL open_app_window(struct AppUi *ui)
     }
 
     compute_app_layout(ui);
-    if (!create_gadgets(ui)) {
-        return FALSE;
-    }
     if (!create_textfield_input(ui)) {
         return FALSE;
     }
     add_app_gadgets(ui);
-    layout_gadgets(ui);
+    if (!layout_gadgets(ui)) {
+        return FALSE;
+    }
     GT_RefreshWindow(ui->window, NULL);
     ActivateGadget(ui->input_gadget, ui->window, NULL);
 
@@ -1196,10 +1192,7 @@ static void close_app_ui(struct AppUi *ui)
         RemoveGList(ui->window, ui->input_scroll_gadget, -1);
         ui->input_gadgets_added = FALSE;
     }
-    if (ui->window != NULL && ui->gadtools_added && ui->gadgets != NULL) {
-        RemoveGList(ui->window, ui->gadgets, -1);
-        ui->gadtools_added = FALSE;
-    }
+    remove_gadtools_gadgets(ui);
     if (ui->input_gadget != NULL) {
         DisposeObject(ui->input_gadget);
         ui->input_gadget = NULL;
@@ -1423,7 +1416,9 @@ static void run_event_loop(struct AppUi *ui)
                     break;
 
                 case IDCMP_NEWSIZE:
-                    layout_gadgets(ui);
+                    if (!layout_gadgets(ui)) {
+                        running = FALSE;
+                    }
                     break;
 
                 case IDCMP_GADGETUP:
