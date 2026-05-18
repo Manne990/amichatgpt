@@ -1126,7 +1126,9 @@ static BOOL receive_bridge_output(struct AppUi *ui, char *output, ULONG output_s
 static void append_sanitized_bridge_line(
     struct ChatTranscript *transcript,
     const char *source_line,
-    const char **echo_cursor)
+    const char **echo_cursor,
+    BOOL prefix_assistant_response,
+    BOOL *assistant_prefix_pending)
 {
     static char clean_line[BRIDGE_RESPONSE_LEN];
     ULONG used;
@@ -1148,14 +1150,30 @@ static void append_sanitized_bridge_line(
     line = trim_text(clean_line);
     if (*line != '\0' && strcmp(line, ">") != 0 &&
         !bridge_line_matches_echo(line, echo_cursor)) {
-        transcript_append(transcript, line);
         if (ascii_equals_ignore_case(line, "THINKING...")) {
+            transcript_append(transcript, line);
             transcript_append_blank(transcript);
+            if (assistant_prefix_pending != NULL) {
+                *assistant_prefix_pending = prefix_assistant_response;
+            }
+            return;
+        }
+
+        if (prefix_assistant_response && assistant_prefix_pending != NULL &&
+            *assistant_prefix_pending) {
+            transcript_append_prefixed(transcript, "AI> ", line);
+            *assistant_prefix_pending = FALSE;
+        } else {
+            transcript_append(transcript, line);
         }
     }
 }
 
-static void append_bridge_output(struct AppUi *ui, char *output, const char *echo_line)
+static void append_bridge_output(
+    struct AppUi *ui,
+    char *output,
+    const char *echo_line,
+    BOOL prefix_assistant_response)
 {
     char *cursor;
     char *line_end;
@@ -1163,6 +1181,7 @@ static void append_bridge_output(struct AppUi *ui, char *output, const char *ech
     ULONG length;
     ULONG prompt_offset;
     const char *echo_cursor;
+    BOOL assistant_prefix_pending;
 
     length = strlen(output);
     if (bridge_output_find_prompt(output, length, &prompt_offset)) {
@@ -1170,6 +1189,7 @@ static void append_bridge_output(struct AppUi *ui, char *output, const char *ech
     }
 
     echo_cursor = echo_line;
+    assistant_prefix_pending = prefix_assistant_response;
     cursor = output;
     while (*cursor != '\0') {
         while (*cursor == '\r' || *cursor == '\n') {
@@ -1186,7 +1206,12 @@ static void append_bridge_output(struct AppUi *ui, char *output, const char *ech
 
         saved = *line_end;
         *line_end = '\0';
-        append_sanitized_bridge_line(&ui->transcript, cursor, &echo_cursor);
+        append_sanitized_bridge_line(
+            &ui->transcript,
+            cursor,
+            &echo_cursor,
+            prefix_assistant_response,
+            &assistant_prefix_pending);
 
         if (saved == '\0') {
             break;
@@ -1230,7 +1255,7 @@ static BOOL bridge_send_command(struct AppUi *ui, const char *command)
         return FALSE;
     }
 
-    append_bridge_output(ui, ui->bridge_output, command);
+    append_bridge_output(ui, ui->bridge_output, command, FALSE);
     return TRUE;
 }
 
@@ -1317,7 +1342,7 @@ static BOOL connect_bridge(struct AppUi *ui)
         set_status(ui, "Not connected");
         return FALSE;
     }
-    append_bridge_output(ui, ui->bridge_output, NULL);
+    append_bridge_output(ui, ui->bridge_output, NULL, FALSE);
 
     if (!configure_bridge_reply_mode(ui)) {
         set_status(ui, "Could not set reply mode");
@@ -1767,7 +1792,7 @@ static void append_input_to_transcript(struct ChatTranscript *transcript, const 
             continue;
         }
 
-        prefix = first_line ? "You: " : "     ";
+        prefix = first_line ? "You> " : "     ";
         line_index = 0;
 
         while (*cursor != '\0' && *cursor != '\n' && *cursor != '\r' &&
@@ -1894,7 +1919,7 @@ static void handle_send(struct AppUi *ui)
         set_status(ui, "Waiting for bridge");
         if (bridge_send_all(ui, ui->bridge_prompt) && bridge_send_all(ui, "\r\n") &&
             receive_bridge_output(ui, ui->bridge_output, sizeof(ui->bridge_output))) {
-            append_bridge_output(ui, ui->bridge_output, ui->bridge_prompt);
+            append_bridge_output(ui, ui->bridge_output, ui->bridge_prompt, TRUE);
             set_status(ui, "Connected");
         } else {
             set_status(ui, "Not connected");

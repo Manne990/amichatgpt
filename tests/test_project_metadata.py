@@ -212,6 +212,8 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("bridge_send_all", source)
         self.assertIn("receive_bridge_output", source)
         self.assertIn("append_bridge_output", source)
+        self.assertIn('"You> "', source)
+        self.assertIn('"AI> "', source)
         self.assertIn("bridge_output_find_prompt", source)
         self.assertIn("bridge_output_is_display_byte", source)
         self.assertIn("bridge_output_decode_display_byte", source)
