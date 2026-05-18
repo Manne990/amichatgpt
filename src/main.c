@@ -48,11 +48,12 @@ Class *TextFieldClass = NULL;
 #define WINDOW_DEFAULT_HEIGHT 315
 #define UI_MARGIN 12
 #define UI_GAP 8
+#define TRANSCRIPT_INPUT_GAP 16
+#define INPUT_STATUS_GAP 8
 #define INPUT_SCROLL_WIDTH 16
 #define INPUT_SCROLL_GAP 3
 #define STATUS_HEIGHT 16
 #define SEND_BUTTON_WIDTH 82
-#define SEND_BUTTON_HEIGHT 26
 
 #define GID_TRANSCRIPT 1
 #define GID_INPUT 2
@@ -198,7 +199,7 @@ static void clear_window_content(struct AppUi *ui)
     }
 
     rast_port = ui->window->RPort;
-    SetAPen(rast_port, ui->screen->BlockPen);
+    SetAPen(rast_port, 0);
     RectFill(
         rast_port,
         ui->window->BorderLeft,
@@ -247,7 +248,6 @@ static void layout_gadgets(struct AppUi *ui)
     WORD min_transcript_height;
     WORD max_input_height;
     WORD button_left;
-    WORD button_top;
     WORD status_top;
     WORD status_width;
     WORD text_line_height;
@@ -276,7 +276,8 @@ static void layout_gadgets(struct AppUi *ui)
     min_input_height = line_box_height(text_line_height, INPUT_MIN_VISIBLE_LINES);
     min_transcript_height = line_box_height(text_line_height, TRANSCRIPT_MIN_VISIBLE_LINES);
     max_input_height =
-        available_height - min_transcript_height - STATUS_HEIGHT - (UI_GAP * 2);
+        available_height - min_transcript_height - STATUS_HEIGHT - TRANSCRIPT_INPUT_GAP -
+        INPUT_STATUS_GAP;
     if (max_input_height < min_input_height) {
         max_input_height = min_input_height;
     }
@@ -285,16 +286,15 @@ static void layout_gadgets(struct AppUi *ui)
     }
 
     status_top = inner_bottom - STATUS_HEIGHT;
-    input_top = status_top - UI_GAP - input_area_height;
+    input_top = status_top - INPUT_STATUS_GAP - input_area_height;
     transcript_top = inner_top;
-    transcript_height = input_top - transcript_top - UI_GAP;
+    transcript_height = input_top - transcript_top - TRANSCRIPT_INPUT_GAP;
 
     if (transcript_height < min_transcript_height) {
         transcript_height = min_transcript_height;
     }
 
     button_left = inner_right - SEND_BUTTON_WIDTH;
-    button_top = input_top + input_area_height - SEND_BUTTON_HEIGHT;
     input_width = button_left - inner_left - UI_GAP - INPUT_SCROLL_WIDTH - INPUT_SCROLL_GAP;
     if (input_width < 80) {
         input_width = 80;
@@ -377,11 +377,11 @@ static void layout_gadgets(struct AppUi *ui)
         GA_Left,
         button_left,
         GA_Top,
-        button_top,
+        input_top,
         GA_Width,
         SEND_BUTTON_WIDTH,
         GA_Height,
-        SEND_BUTTON_HEIGHT,
+        input_area_height,
         TAG_DONE);
 
     GT_SetGadgetAttrs(
@@ -398,7 +398,10 @@ static void layout_gadgets(struct AppUi *ui)
         STATUS_HEIGHT,
         TAG_DONE);
 
-    GT_RefreshWindow(ui->window, NULL);
+    RefreshGList(ui->gadgets, ui->window, NULL, -1);
+    if (ui->input_scroll_gadget != NULL) {
+        RefreshGList(ui->input_scroll_gadget, ui->window, NULL, -1);
+    }
     refresh_transcript(ui);
 }
 
