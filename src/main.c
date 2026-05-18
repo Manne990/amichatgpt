@@ -61,11 +61,10 @@ Class *TextFieldClass = NULL;
 #define WINDOW_DEFAULT_HEIGHT 315
 #define UI_MARGIN 12
 #define UI_GAP 8
-#define TRANSCRIPT_INPUT_GAP 24
+#define TRANSCRIPT_INPUT_GAP 12
 #define INPUT_SCROLL_WIDTH 16
 #define INPUT_SCROLL_GAP 3
 #define SEND_BUTTON_WIDTH 82
-#define SEND_BUTTON_RIGHT_INSET 44
 #define SEND_BUTTON_VERTICAL_INSET 8
 #define SEND_BUTTON_TOP_NUDGE 100
 
@@ -617,7 +616,7 @@ static void compute_app_layout(struct AppUi *ui)
         transcript_height = min_transcript_height;
     }
 
-    button_left = inner_right - SEND_BUTTON_RIGHT_INSET - SEND_BUTTON_WIDTH;
+    button_left = inner_right - SEND_BUTTON_WIDTH;
     button_height = input_area_height;
     if (button_height < text_line_height) {
         button_height = text_line_height;
@@ -678,6 +677,10 @@ static void layout_gadgets(struct AppUi *ui)
             GA_Height,
             layout->transcript_height,
             TAG_DONE);
+        ui->transcript_gadget->LeftEdge = layout->transcript_left;
+        ui->transcript_gadget->TopEdge = layout->transcript_top;
+        ui->transcript_gadget->Width = layout->transcript_width;
+        ui->transcript_gadget->Height = layout->transcript_height;
     }
 
     if (ui->input_gadget != NULL) {

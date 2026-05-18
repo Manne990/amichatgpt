@@ -141,6 +141,9 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("compute_app_layout", source)
         self.assertIn("layout_gadgets", source)
         self.assertIn("add_app_gadgets", source)
+        self.assertIn("#define TRANSCRIPT_INPUT_GAP 12", source)
+        self.assertIn("ui->transcript_gadget->Width = layout->transcript_width", source)
+        self.assertNotIn("SEND_BUTTON_RIGHT_INSET", source)
         self.assertNotIn("texteditor.gadget", source)
         self.assertNotIn("WA_Gadgets", source)
 
