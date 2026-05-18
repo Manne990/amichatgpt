@@ -52,25 +52,35 @@ class ProjectMetadataTest(unittest.TestCase):
 
     def test_workbench_icon_images_are_present(self):
         data = (ROOT / "packaging" / "AmiChatGPT.info").read_bytes()
+        image_header_offset = 80
+        image_header_size = 20
         gadget_width, gadget_height = struct.unpack_from(">HH", data, 12)
-        width, height, depth = struct.unpack_from(">HHH", data, 82)
+        width, height, depth = struct.unpack_from(">HHH", data, image_header_offset + 2)
         row_words = (width + 15) // 16
-        image_data_offset = 98
+        image_data_offset = image_header_offset + image_header_size
         image_data_size = row_words * 2 * height * depth
         selected_image_offset = image_data_offset + image_data_size
 
         self.assertEqual((width, height), (gadget_width, gadget_height))
         self.assertGreater(depth, 0)
         self.assertLessEqual(depth, 8)
+        self.assertEqual(
+            len(data[image_data_offset : image_data_offset + image_data_size]),
+            image_data_size,
+        )
         self.assertNotEqual(
             data[image_data_offset : image_data_offset + image_data_size],
             bytes(image_data_size),
         )
-        self.assertLess(selected_image_offset + 20, len(data))
+        self.assertLess(selected_image_offset + image_header_size, len(data))
         selected_width, selected_height, selected_depth = struct.unpack_from(
-            ">HHH", data, selected_image_offset + 4
+            ">HHH", data, selected_image_offset + 2
         )
         self.assertEqual((selected_width, selected_height, selected_depth), (width, height, depth))
+        selected_data_offset = selected_image_offset + image_header_size
+        selected_data = data[selected_data_offset : selected_data_offset + image_data_size]
+        self.assertGreaterEqual(len(selected_data), image_data_size - 2)
+        self.assertNotEqual(selected_data, bytes(len(selected_data)))
 
     def test_amiga_build_opens_visible_workbench_console(self):
         source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")
