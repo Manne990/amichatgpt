@@ -70,6 +70,10 @@ Class *TextFieldClass = NULL;
 #define SEND_BUTTON_WIDTH 82
 #define SEND_BUTTON_VERTICAL_INSET 8
 #define SEND_BUTTON_TOP_NUDGE 100
+#define TRANSCRIPT_TEXT_LEFT_PAD 4
+#define TRANSCRIPT_TEXT_TOP_PAD 4
+#define TRANSCRIPT_TEXT_RIGHT_PAD 28
+#define TRANSCRIPT_TEXT_BOTTOM_PAD 10
 
 #define GID_TRANSCRIPT 1
 #define GID_INPUT 2
@@ -531,6 +535,126 @@ static ULONG chat_pen_for_style(struct AppUi *ui, UBYTE style)
     }
 }
 
+static WORD transcript_text_left(struct AppUi *ui)
+{
+    return ui->layout.transcript_left + TRANSCRIPT_TEXT_LEFT_PAD;
+}
+
+static WORD transcript_text_top(struct AppUi *ui)
+{
+    return ui->layout.transcript_top + TRANSCRIPT_TEXT_TOP_PAD;
+}
+
+static WORD transcript_text_right(struct AppUi *ui)
+{
+    return ui->layout.transcript_left + ui->layout.transcript_width -
+           TRANSCRIPT_TEXT_RIGHT_PAD;
+}
+
+static WORD transcript_text_bottom(struct AppUi *ui)
+{
+    return ui->layout.transcript_top + ui->layout.transcript_height -
+           TRANSCRIPT_TEXT_BOTTOM_PAD;
+}
+
+static UWORD transcript_drawable_rows(struct AppUi *ui)
+{
+    struct RastPort *rast_port;
+    WORD baseline_y;
+    WORD text_bottom;
+    WORD line_height;
+
+    if (ui->window == NULL || ui->window->RPort == NULL) {
+        return 1;
+    }
+
+    rast_port = ui->window->RPort;
+    line_height = get_text_line_height(ui);
+    baseline_y = transcript_text_top(ui) + rast_port->TxBaseline + 1;
+    text_bottom = transcript_text_bottom(ui);
+
+    if (line_height <= 0 || baseline_y > text_bottom) {
+        return 1;
+    }
+
+    return (UWORD)(((text_bottom - baseline_y) / line_height) + 1);
+}
+
+static UWORD transcript_chars_per_row(struct AppUi *ui)
+{
+    struct RastPort *rast_port;
+    WORD text_width;
+    WORD char_width;
+
+    if (ui->window == NULL || ui->window->RPort == NULL) {
+        return 1;
+    }
+
+    rast_port = ui->window->RPort;
+    text_width = transcript_text_right(ui) - transcript_text_left(ui) + 1;
+    if (text_width < 1) {
+        return 1;
+    }
+
+    char_width = TextLength(rast_port, "M", 1);
+    if (char_width < 1) {
+        char_width = 1;
+    }
+
+    return (UWORD)(text_width / char_width > 0 ? text_width / char_width : 1);
+}
+
+static UWORD transcript_visual_rows_for_line(const char *line, UWORD chars_per_row)
+{
+    ULONG length;
+
+    if (chars_per_row == 0) {
+        chars_per_row = 1;
+    }
+
+    length = strlen(line);
+    if (length == 0) {
+        return 1;
+    }
+
+    return (UWORD)((length + chars_per_row - 1) / chars_per_row);
+}
+
+static UWORD transcript_total_visual_rows(struct ChatTranscript *transcript, UWORD chars_per_row)
+{
+    UWORD index;
+    UWORD rows;
+
+    rows = 0;
+    for (index = 0; index < transcript->count; index++) {
+        rows += transcript_visual_rows_for_line(transcript->text[index], chars_per_row);
+    }
+
+    return rows;
+}
+
+static UWORD transcript_first_line_for_visual_row(
+    struct ChatTranscript *transcript,
+    UWORD chars_per_row,
+    UWORD visual_row)
+{
+    UWORD index;
+    UWORD rows;
+
+    rows = 0;
+    for (index = 0; index < transcript->count; index++) {
+        UWORD line_rows;
+
+        line_rows = transcript_visual_rows_for_line(transcript->text[index], chars_per_row);
+        if (rows + line_rows > visual_row) {
+            return index;
+        }
+        rows += line_rows;
+    }
+
+    return transcript->count > 0 ? transcript->count - 1 : 0;
+}
+
 static void draw_colored_transcript(struct AppUi *ui)
 {
     struct RastPort *rast_port;
@@ -540,9 +664,12 @@ static void draw_colored_transcript(struct AppUi *ui)
     WORD text_bottom;
     WORD line_height;
     WORD baseline_y;
-    UWORD first_line;
+    UWORD start_visual_row;
+    UWORD visual_row;
+    UWORD total_visual_rows;
     UWORD line_index;
-    UWORD visible_lines;
+    UWORD visible_rows;
+    UWORD chars_per_row;
 
     if (ui->window == NULL || ui->window->RPort == NULL || ui->transcript_gadget == NULL) {
         return;
@@ -550,20 +677,19 @@ static void draw_colored_transcript(struct AppUi *ui)
 
     rast_port = ui->window->RPort;
     line_height = get_text_line_height(ui);
-    visible_lines = ui->layout.visible_transcript_lines;
-    if (visible_lines == 0) {
-        visible_lines = 1;
+    visible_rows = transcript_drawable_rows(ui);
+    chars_per_row = transcript_chars_per_row(ui);
+
+    total_visual_rows = transcript_total_visual_rows(&ui->transcript, chars_per_row);
+    start_visual_row = 0;
+    if (total_visual_rows > visible_rows) {
+        start_visual_row = total_visual_rows - visible_rows;
     }
 
-    first_line = 0;
-    if (ui->transcript.count > visible_lines) {
-        first_line = ui->transcript.count - visible_lines;
-    }
-
-    text_left = ui->layout.transcript_left + 4;
-    text_top = ui->layout.transcript_top + 3;
-    text_right = ui->layout.transcript_left + ui->layout.transcript_width - 22;
-    text_bottom = ui->layout.transcript_top + ui->layout.transcript_height - 4;
+    text_left = transcript_text_left(ui);
+    text_top = transcript_text_top(ui);
+    text_right = transcript_text_right(ui);
+    text_bottom = transcript_text_bottom(ui);
 
     if (text_right <= text_left || text_bottom <= text_top) {
         return;
@@ -574,38 +700,66 @@ static void draw_colored_transcript(struct AppUi *ui)
     SetDrMd(rast_port, JAM1);
 
     baseline_y = text_top + rast_port->TxBaseline + 1;
-    for (line_index = first_line;
+    visual_row = 0;
+    for (line_index = 0;
          line_index < ui->transcript.count && baseline_y <= text_bottom;
          line_index++) {
         const char *line;
+        ULONG length;
+        ULONG offset;
 
         line = ui->transcript.text[line_index];
-        if (line[0] != '\0') {
-            SetAPen(rast_port, chat_pen_for_style(ui, ui->transcript.style[line_index]));
-            Move(rast_port, text_left, baseline_y);
-            Text(rast_port, line, (ULONG)strlen(line));
+        length = strlen(line);
+        if (length == 0) {
+            if (visual_row >= start_visual_row) {
+                baseline_y += line_height;
+            }
+            visual_row++;
+            continue;
         }
-        baseline_y += line_height;
+
+        for (offset = 0; offset < length && baseline_y <= text_bottom; offset += chars_per_row) {
+            UWORD draw_count;
+
+            draw_count = (UWORD)(length - offset);
+            if (draw_count > chars_per_row) {
+                draw_count = chars_per_row;
+            }
+
+            if (visual_row >= start_visual_row) {
+                SetAPen(rast_port, chat_pen_for_style(ui, ui->transcript.style[line_index]));
+                Move(rast_port, text_left, baseline_y);
+                Text(rast_port, line + offset, draw_count);
+                baseline_y += line_height;
+            }
+            visual_row++;
+        }
     }
 }
 
 static void refresh_transcript(struct AppUi *ui)
 {
     UWORD top;
-    UWORD visible_lines;
+    UWORD visible_rows;
+    UWORD chars_per_row;
+    UWORD total_visual_rows;
+    UWORD start_visual_row;
 
     if (ui->window == NULL || ui->transcript_gadget == NULL) {
         return;
     }
 
-    visible_lines = ui->layout.visible_transcript_lines;
-    if (visible_lines == 0) {
-        visible_lines = 1;
-    }
+    visible_rows = transcript_drawable_rows(ui);
+    chars_per_row = transcript_chars_per_row(ui);
+    total_visual_rows = transcript_total_visual_rows(&ui->transcript, chars_per_row);
 
     top = 0;
-    if (ui->transcript.count > visible_lines) {
-        top = ui->transcript.count - visible_lines;
+    if (total_visual_rows > visible_rows) {
+        start_visual_row = total_visual_rows - visible_rows;
+        top = transcript_first_line_for_visual_row(
+            &ui->transcript,
+            chars_per_row,
+            start_visual_row);
     }
 
     GT_SetGadgetAttrs(
