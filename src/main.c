@@ -595,7 +595,7 @@ static void layout_gadgets(struct AppUi *ui)
     if (button_height < text_line_height + 8) {
         button_height = text_line_height + 8;
     }
-    button_top = input_top + SEND_BUTTON_VERTICAL_INSET - SEND_BUTTON_TOP_NUDGE;
+    button_top = input_top; // + SEND_BUTTON_VERTICAL_INSET - SEND_BUTTON_TOP_NUDGE;
     input_width = button_left - inner_left - UI_GAP - INPUT_SCROLL_WIDTH - INPUT_SCROLL_GAP;
     if (input_width < 80) {
         input_width = 80;
