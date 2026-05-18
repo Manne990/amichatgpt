@@ -4,11 +4,11 @@ AmiChatGPT 0.1.0
 This is an early GUI build for the AmiChatGPT Workbench client.
 
 The current executable opens a native, resizable Workbench window with a
-scrollable colored transcript, a multiline textfield input editor, and a Send
-button.
+scrollable transcript, a multiline textfield input editor, and a Send button.
 It reads bridge configuration and tries to connect to the configured
-ChatGPT64 bridge over TCP. It sends prompts as terminal lines and appends
-bridge replies to the transcript.
+ChatGPT64 bridge over TCP. It sends prompts as terminal lines, wraps long
+transcript lines for the Workbench window, and appends bridge replies to the
+transcript.
 
 Target:
 - AmigaOS / Workbench 3.0 or 3.1
@@ -19,9 +19,12 @@ This build connects to the ChatGPT64 bridge over plain TCP and reports the
 connection status in the transcript. It connects directly to chatgpt64 on
 port 6464; tcpser is only needed for C64/CCGMS modem-style clients.
 
-ChatGPT64 can run in ASCII terminal mode for plain output or C64 terminal mode
-for bridge color cues. AmiChatGPT filters PETSCII/control bytes before showing
-the transcript.
+Recommended bridge command while the GUI stabilizes:
+
+  chatgpt64 start --terminal ascii --width 60
+
+The C64 terminal mode also works; AmiChatGPT filters PETSCII/control bytes
+before displaying the transcript.
 
 Bundled runtime:
 - Gadgets/textfield.gadget provides the multiline prompt editor.

@@ -72,23 +72,19 @@ The simplest path is to download the GitHub Actions artifact and use one of thes
 - Mount `AmiChatGPT-0.1.0/` as a directory or hard drive in FS-UAE, WinUAE, or Amiberry.
 - Copy/extract `AmiChatGPT-0.1.0.lha` inside an Amiga environment.
 
-Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current build opens a native, resizable Workbench window with a scrollable colored transcript, a multiline textfield input editor with vertical scrolling, and a Send button. It reads bridge settings from built-in defaults, `AmiChatGPT.conf`, Workbench ToolTypes, and CLI arguments. It connects to the configured ChatGPT64 bridge over TCP, sends the prompt as a terminal line, and appends the bridge reply to the transcript.
+Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current build opens a native, resizable Workbench window with a scrollable transcript, a multiline textfield input editor with vertical scrolling, and a Send button. It reads bridge settings from built-in defaults, `AmiChatGPT.conf`, Workbench ToolTypes, and CLI arguments. It connects to the configured ChatGPT64 bridge over TCP, sends the prompt as a terminal line, wraps long transcript lines for the Workbench window, and appends the bridge reply to the transcript.
 
 Third-party notice: `textfield.gadget` 3.1 is Copyright (C) 1995 Mark Thomas. See `ThirdParty/textfield-license.txt` in the package.
 
 ## Bridge
 
-Run ChatGPT64 on the bridge computer in ASCII mode for plain text:
+Run ChatGPT64 on the bridge computer in ASCII mode:
 
 ```sh
-chatgpt64 start --terminal ascii --width 72
+chatgpt64 start --terminal ascii --width 60
 ```
 
-You can also run the bridge in C64 terminal mode. AmiChatGPT filters PETSCII/control bytes and maps the bridge color cues to Workbench pens where the active screen palette allows it:
-
-```sh
-chatgpt64 start --terminal c64 --width 72
-```
+`--terminal c64` also works; AmiChatGPT filters PETSCII/control bytes before displaying the transcript, but this build intentionally keeps transcript rendering plain while the GUI stabilizes.
 
 If AmiChatGPT is running in an emulator with UAE/bsdsocket networking on the same Mac, the packaged default `HOST=127.0.0.1` is usually correct. For a real Amiga or an emulated Amiga using a separate TCP stack, set `HOST` to the bridge computer's LAN IP address.
 
