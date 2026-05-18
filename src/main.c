@@ -48,11 +48,9 @@ Class *TextFieldClass = NULL;
 #define WINDOW_DEFAULT_HEIGHT 315
 #define UI_MARGIN 12
 #define UI_GAP 8
-#define TRANSCRIPT_INPUT_GAP 16
-#define INPUT_STATUS_GAP 8
+#define TRANSCRIPT_INPUT_GAP 24
 #define INPUT_SCROLL_WIDTH 16
 #define INPUT_SCROLL_GAP 3
-#define STATUS_HEIGHT 16
 #define SEND_BUTTON_WIDTH 82
 
 #define GID_TRANSCRIPT 1
@@ -248,8 +246,6 @@ static void layout_gadgets(struct AppUi *ui)
     WORD min_transcript_height;
     WORD max_input_height;
     WORD button_left;
-    WORD status_top;
-    WORD status_width;
     WORD text_line_height;
     BOOL needs_refresh;
 
@@ -275,9 +271,7 @@ static void layout_gadgets(struct AppUi *ui)
     input_area_height = line_box_height(text_line_height, INPUT_VISIBLE_LINES);
     min_input_height = line_box_height(text_line_height, INPUT_MIN_VISIBLE_LINES);
     min_transcript_height = line_box_height(text_line_height, TRANSCRIPT_MIN_VISIBLE_LINES);
-    max_input_height =
-        available_height - min_transcript_height - STATUS_HEIGHT - TRANSCRIPT_INPUT_GAP -
-        INPUT_STATUS_GAP;
+    max_input_height = available_height - min_transcript_height - TRANSCRIPT_INPUT_GAP;
     if (max_input_height < min_input_height) {
         max_input_height = min_input_height;
     }
@@ -285,8 +279,7 @@ static void layout_gadgets(struct AppUi *ui)
         input_area_height = max_input_height;
     }
 
-    status_top = inner_bottom - STATUS_HEIGHT;
-    input_top = status_top - INPUT_STATUS_GAP - input_area_height;
+    input_top = inner_bottom - input_area_height;
     transcript_top = inner_top;
     transcript_height = input_top - transcript_top - TRANSCRIPT_INPUT_GAP;
 
@@ -298,10 +291,6 @@ static void layout_gadgets(struct AppUi *ui)
     input_width = button_left - inner_left - UI_GAP - INPUT_SCROLL_WIDTH - INPUT_SCROLL_GAP;
     if (input_width < 80) {
         input_width = 80;
-    }
-    status_width = button_left - inner_left - UI_GAP;
-    if (status_width < 80) {
-        status_width = content_width;
     }
 
     ui->visible_transcript_lines = transcript_height / text_line_height;
@@ -382,20 +371,6 @@ static void layout_gadgets(struct AppUi *ui)
         SEND_BUTTON_WIDTH,
         GA_Height,
         input_area_height,
-        TAG_DONE);
-
-    GT_SetGadgetAttrs(
-        ui->status_gadget,
-        ui->window,
-        NULL,
-        GA_Left,
-        inner_left,
-        GA_Top,
-        status_top,
-        GA_Width,
-        status_width,
-        GA_Height,
-        STATUS_HEIGHT,
         TAG_DONE);
 
     RefreshGList(ui->gadgets, ui->window, NULL, -1);
@@ -526,21 +501,6 @@ static BOOL create_gadgets(struct AppUi *ui)
         return FALSE;
     }
     ui->send_gadget = tail;
-
-    init_new_gadget(&ng, ui->visual_info, UI_MARGIN, 257, 320, STATUS_HEIGHT, NULL, GID_STATUS);
-    tail = CreateGadget(
-        TEXT_KIND,
-        tail,
-        &ng,
-        GTTX_Text,
-        "Offline prototype",
-        GTTX_Border,
-        TRUE,
-        TAG_DONE);
-    if (tail == NULL) {
-        return FALSE;
-    }
-    ui->status_gadget = tail;
 
     return TRUE;
 }
@@ -680,8 +640,8 @@ static BOOL open_app_window(struct AppUi *ui)
         return FALSE;
     }
 
-    GT_RefreshWindow(ui->window, NULL);
     layout_gadgets(ui);
+    GT_RefreshWindow(ui->window, NULL);
     if (!create_textfield_input(ui)) {
         return FALSE;
     }
