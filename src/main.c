@@ -455,14 +455,23 @@ static void transcript_append_raw(struct ChatTranscript *transcript, const char 
     transcript_rebuild_list(transcript);
 }
 
-static void transcript_append(struct ChatTranscript *transcript, const char *line)
+static void transcript_append_wrapped_with_prefix(
+    struct ChatTranscript *transcript,
+    const char *first_prefix,
+    const char *continuation_prefix,
+    const char *line)
 {
     char wrapped[CHAT_LINE_LEN];
+    const char *prefix;
     const char *cursor;
     ULONG remaining;
+    ULONG prefix_len;
     UWORD wrap_width;
+    UWORD content_width;
     UWORD chunk_len;
     UWORD split_at;
+    UWORD copy_len;
+    BOOL first_chunk;
 
     wrap_width = TRANSCRIPT_WRAP_WIDTH;
     if (wrap_width >= CHAT_LINE_LEN) {
@@ -472,30 +481,51 @@ static void transcript_append(struct ChatTranscript *transcript, const char *lin
         wrap_width = 1;
     }
 
+    if (first_prefix == NULL) {
+        first_prefix = "";
+    }
+    if (continuation_prefix == NULL) {
+        continuation_prefix = "";
+    }
+
     if (line == NULL || *line == '\0') {
-        transcript_append_raw(transcript, "");
+        transcript_append_raw(transcript, first_prefix);
         return;
     }
 
+    first_chunk = TRUE;
     cursor = line;
     while (*cursor != '\0') {
-        remaining = strlen(cursor);
-        chunk_len = remaining > wrap_width ? wrap_width : (UWORD)remaining;
+        prefix = first_chunk ? first_prefix : continuation_prefix;
+        prefix_len = strlen(prefix);
+        if (prefix_len >= CHAT_LINE_LEN) {
+            prefix_len = CHAT_LINE_LEN - 1;
+        }
 
-        if (remaining > wrap_width) {
+        content_width = wrap_width > prefix_len ? (UWORD)(wrap_width - prefix_len) : 1;
+        remaining = strlen(cursor);
+        chunk_len = remaining > content_width ? content_width : (UWORD)remaining;
+
+        if (remaining > content_width) {
             split_at = chunk_len;
             while (split_at > 0 && cursor[split_at] != ' ') {
                 split_at--;
             }
-            if (split_at >= wrap_width / 2) {
+            if (split_at >= content_width / 2) {
                 chunk_len = split_at;
             }
         }
 
-        strncpy(wrapped, cursor, chunk_len);
-        wrapped[chunk_len] = '\0';
-        while (chunk_len > 0 && wrapped[chunk_len - 1] == ' ') {
-            wrapped[--chunk_len] = '\0';
+        strncpy(wrapped, prefix, prefix_len);
+        wrapped[prefix_len] = '\0';
+        copy_len = chunk_len;
+        if (prefix_len + copy_len >= CHAT_LINE_LEN) {
+            copy_len = (UWORD)(CHAT_LINE_LEN - prefix_len - 1);
+        }
+        strncat(wrapped, cursor, copy_len);
+
+        while (strlen(wrapped) > prefix_len && wrapped[strlen(wrapped) - 1] == ' ') {
+            wrapped[strlen(wrapped) - 1] = '\0';
         }
 
         if (wrapped[0] != '\0') {
@@ -506,7 +536,13 @@ static void transcript_append(struct ChatTranscript *transcript, const char *lin
         while (*cursor == ' ') {
             cursor++;
         }
+        first_chunk = FALSE;
     }
+}
+
+static void transcript_append(struct ChatTranscript *transcript, const char *line)
+{
+    transcript_append_wrapped_with_prefix(transcript, "", "", line);
 }
 
 static void transcript_append_prefixed(
@@ -514,12 +550,77 @@ static void transcript_append_prefixed(
     const char *prefix,
     const char *line)
 {
-    char formatted[CHAT_LINE_LEN];
+    char continuation[CHAT_LINE_LEN];
+    ULONG prefix_len;
 
-    strncpy(formatted, prefix, CHAT_LINE_LEN - 1);
-    formatted[CHAT_LINE_LEN - 1] = '\0';
-    strncat(formatted, line, CHAT_LINE_LEN - strlen(formatted) - 1);
-    transcript_append(transcript, formatted);
+    if (prefix == NULL) {
+        prefix = "";
+    }
+
+    prefix_len = strlen(prefix);
+    if (prefix_len >= sizeof(continuation)) {
+        prefix_len = sizeof(continuation) - 1;
+    }
+    memset(continuation, ' ', prefix_len);
+    continuation[prefix_len] = '\0';
+
+    transcript_append_wrapped_with_prefix(transcript, prefix, continuation, line);
+}
+
+static void transcript_append_blank(struct ChatTranscript *transcript)
+{
+    if (transcript->count == 0) {
+        return;
+    }
+    if (transcript->text[transcript->count - 1][0] == '\0') {
+        return;
+    }
+    transcript_append_raw(transcript, "");
+}
+
+static BOOL ascii_starts_with_ignore_case(const char *text, const char *prefix)
+{
+    while (*prefix != '\0') {
+        if (*text == '\0') {
+            return FALSE;
+        }
+        if (toupper((unsigned char)*text) != toupper((unsigned char)*prefix)) {
+            return FALSE;
+        }
+        text++;
+        prefix++;
+    }
+
+    return TRUE;
+}
+
+static BOOL bridge_line_matches_echo(const char *line, const char **echo_cursor)
+{
+    const char *cursor;
+
+    if (line == NULL || *line == '\0' || echo_cursor == NULL || *echo_cursor == NULL) {
+        return FALSE;
+    }
+
+    cursor = *echo_cursor;
+    while (*cursor == ' ') {
+        cursor++;
+    }
+    if (*cursor == '\0') {
+        *echo_cursor = cursor;
+        return FALSE;
+    }
+
+    if (!ascii_starts_with_ignore_case(cursor, line)) {
+        return FALSE;
+    }
+
+    cursor += strlen(line);
+    while (*cursor == ' ') {
+        cursor++;
+    }
+    *echo_cursor = cursor;
+    return TRUE;
 }
 
 static void refresh_transcript(struct AppUi *ui)
@@ -999,14 +1100,14 @@ static BOOL receive_bridge_output(struct AppUi *ui, char *output, ULONG output_s
 static void append_sanitized_bridge_line(
     struct ChatTranscript *transcript,
     const char *source_line,
-    const char *echo_line)
+    const char **echo_cursor)
 {
-    char clean_line[CHAT_LINE_LEN];
-    UWORD used;
+    static char clean_line[BRIDGE_RESPONSE_LEN];
+    ULONG used;
     char *line;
 
     used = 0;
-    while (*source_line != '\0' && used < CHAT_LINE_LEN - 1) {
+    while (*source_line != '\0' && used < BRIDGE_RESPONSE_LEN - 1) {
         unsigned char value;
 
         value = (unsigned char)*source_line++;
@@ -1020,8 +1121,11 @@ static void append_sanitized_bridge_line(
 
     line = trim_text(clean_line);
     if (*line != '\0' && strcmp(line, ">") != 0 &&
-        (echo_line == NULL || strcmp(line, echo_line) != 0)) {
+        !bridge_line_matches_echo(line, echo_cursor)) {
         transcript_append(transcript, line);
+        if (ascii_equals_ignore_case(line, "THINKING...")) {
+            transcript_append_blank(transcript);
+        }
     }
 }
 
@@ -1032,12 +1136,14 @@ static void append_bridge_output(struct AppUi *ui, char *output, const char *ech
     char saved;
     ULONG length;
     ULONG prompt_offset;
+    const char *echo_cursor;
 
     length = strlen(output);
     if (bridge_output_find_prompt(output, length, &prompt_offset)) {
         output[prompt_offset] = '\0';
     }
 
+    echo_cursor = echo_line;
     cursor = output;
     while (*cursor != '\0') {
         while (*cursor == '\r' || *cursor == '\n') {
@@ -1054,13 +1160,14 @@ static void append_bridge_output(struct AppUi *ui, char *output, const char *ech
 
         saved = *line_end;
         *line_end = '\0';
-        append_sanitized_bridge_line(&ui->transcript, cursor, echo_line);
+        append_sanitized_bridge_line(&ui->transcript, cursor, &echo_cursor);
 
         if (saved == '\0') {
             break;
         }
         cursor = line_end + 1;
     }
+    transcript_append_blank(&ui->transcript);
 }
 
 static BOOL bridge_send_all(struct AppUi *ui, const char *text)
@@ -1587,12 +1694,12 @@ static void clear_input_text(struct AppUi *ui)
 
 static void append_input_to_transcript(struct ChatTranscript *transcript, const char *text)
 {
-    char line[CHAT_LINE_LEN];
+    char line[INPUT_TEXT_LEN];
     BOOL first_line;
-    UWORD max_line_len;
-    UWORD line_index;
+    ULONG line_index;
     const char *cursor;
     const char *prefix;
+    unsigned char value;
 
     first_line = TRUE;
     cursor = text;
@@ -1604,11 +1711,16 @@ static void append_input_to_transcript(struct ChatTranscript *transcript, const 
         }
 
         prefix = first_line ? "You: " : "     ";
-        max_line_len = CHAT_LINE_LEN - strlen(prefix) - 1;
         line_index = 0;
 
-        while (*cursor != '\0' && *cursor != '\n' && *cursor != '\r' && line_index < max_line_len) {
-            line[line_index++] = *cursor++;
+        while (*cursor != '\0' && *cursor != '\n' && *cursor != '\r' &&
+               line_index < sizeof(line) - 1) {
+            value = (unsigned char)*cursor++;
+            if (value == '\t') {
+                line[line_index++] = ' ';
+            } else if (value >= 32 && value <= 126) {
+                line[line_index++] = (char)value;
+            }
         }
         line[line_index] = '\0';
 
@@ -1617,6 +1729,9 @@ static void append_input_to_transcript(struct ChatTranscript *transcript, const 
             first_line = FALSE;
         }
 
+        while (*cursor != '\0' && *cursor != '\n' && *cursor != '\r') {
+            cursor++;
+        }
         if (*cursor == '\n' || *cursor == '\r') {
             cursor++;
         }
@@ -1704,11 +1819,14 @@ static void handle_send(struct AppUi *ui)
         return;
     }
 
-    append_input_to_transcript(&ui->transcript, ui->bridge_prompt);
+    append_input_to_transcript(&ui->transcript, input_text);
+    transcript_append_blank(&ui->transcript);
     if (was_truncated) {
         transcript_append(&ui->transcript, "AmiChatGPT: prompt was truncated before sending.");
+        transcript_append_blank(&ui->transcript);
     }
     transcript_append(&ui->transcript, "AmiChatGPT: waiting for bridge reply...");
+    transcript_append_blank(&ui->transcript);
     refresh_transcript(ui);
 
     if (!ui->bridge_connected) {
@@ -1726,6 +1844,7 @@ static void handle_send(struct AppUi *ui)
         }
     } else {
         transcript_append(&ui->transcript, "AmiChatGPT: Not connected. Check TCP stack and bridge.");
+        transcript_append_blank(&ui->transcript);
         set_status(ui, "Not connected");
     }
     refresh_transcript(ui);
