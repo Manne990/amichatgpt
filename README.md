@@ -78,10 +78,12 @@ Third-party notice: `textfield.gadget` 3.1 is Copyright (C) 1995 Mark Thomas. Se
 
 ## Bridge
 
-Run ChatGPT64 on the bridge computer in ASCII mode:
+Run ChatGPT64 on the bridge computer in ASCII mode. AmiChatGPT switches the
+bridge to normal reply mode after it connects, so replies are a little longer
+than the C64 terminal default:
 
 ```sh
-chatgpt64 start --terminal ascii --width 60
+chatgpt64 start --terminal ascii --width 72
 ```
 
 `--terminal c64` also works; AmiChatGPT filters PETSCII/control bytes before displaying the transcript, but this build intentionally keeps transcript rendering plain while the GUI stabilizes.
@@ -98,6 +100,7 @@ Default settings are packaged in `AmiChatGPT.conf`:
 HOST=127.0.0.1
 PORT=6464
 WIDTH=72
+MODE=normal
 ```
 
 Configuration is applied in this order:
@@ -113,6 +116,7 @@ Supported Shell examples:
 AmiChatGPT HOST=127.0.0.1 PORT=6464 WIDTH=72
 AmiChatGPT --host 127.0.0.1 --port 6464 --width 72
 AmiChatGPT HOST=192.168.1.50 PORT=6464 WIDTH=72
+AmiChatGPT --mode long
 ```
 
 Supported Workbench ToolTypes:
@@ -121,4 +125,9 @@ Supported Workbench ToolTypes:
 HOST=127.0.0.1
 PORT=6464
 WIDTH=72
+MODE=normal
 ```
+
+`MODE` controls the ChatGPT64 bridge reply length for this client. Supported
+values are `short`, `normal`, and `long`. The packaged default is `normal`,
+while C64/CCGMS sessions still start in the bridge's short-answer mode.

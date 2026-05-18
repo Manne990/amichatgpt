@@ -10,6 +10,7 @@
 #define DEFAULT_BRIDGE_HOST "127.0.0.1"
 #define DEFAULT_BRIDGE_PORT "6464"
 #define DEFAULT_TEXT_WIDTH "72"
+#define DEFAULT_REPLY_MODE "normal"
 
 #ifdef AMIGA_BUILD
 #include <exec/libraries.h>
@@ -53,6 +54,7 @@ Class *TextFieldClass = NULL;
 #define CONFIG_ERROR_COUNT 8
 #define CONFIG_ERROR_LEN CHAT_LINE_LEN
 #define CONFIG_HOST_LEN 64
+#define CONFIG_MODE_LEN 8
 #define INPUT_TEXT_LEN 2048
 #define INPUT_VISIBLE_LINES 4
 #define INPUT_MIN_VISIBLE_LINES 3
@@ -88,6 +90,7 @@ struct BridgeConfig {
     char host[CONFIG_HOST_LEN];
     UWORD port;
     UWORD width;
+    char mode[CONFIG_MODE_LEN];
     char errors[CONFIG_ERROR_COUNT][CONFIG_ERROR_LEN];
     UWORD error_count;
 };
@@ -200,6 +203,8 @@ static void config_init_defaults(struct BridgeConfig *config)
     config->host[CONFIG_HOST_LEN - 1] = '\0';
     config->port = (UWORD)strtoul(DEFAULT_BRIDGE_PORT, NULL, 10);
     config->width = (UWORD)strtoul(DEFAULT_TEXT_WIDTH, NULL, 10);
+    strncpy(config->mode, DEFAULT_REPLY_MODE, CONFIG_MODE_LEN - 1);
+    config->mode[CONFIG_MODE_LEN - 1] = '\0';
 }
 
 static BOOL config_parse_ushort(
@@ -261,6 +266,20 @@ static BOOL config_apply_pair(
             return TRUE;
         }
         config->width = parsed_value;
+        return TRUE;
+    }
+
+    if (ascii_equals_ignore_case(key, "MODE")) {
+        if (value != NULL &&
+            (ascii_equals_ignore_case(value, "short") ||
+             ascii_equals_ignore_case(value, "normal") ||
+             ascii_equals_ignore_case(value, "long"))) {
+            strncpy(config->mode, value, CONFIG_MODE_LEN - 1);
+            config->mode[CONFIG_MODE_LEN - 1] = '\0';
+            return TRUE;
+        }
+
+        config_add_value_error(config, "MODE", value, "expected short, normal, or long");
         return TRUE;
     }
 
@@ -359,6 +378,12 @@ static void config_load_cli_args(struct BridgeConfig *config, int argc, char **a
              ascii_equals_ignore_case(argument, "--width")) &&
             index + 1 < argc) {
             config_apply_pair(config, "WIDTH", argv[++index], TRUE);
+            continue;
+        }
+        if ((ascii_equals_ignore_case(argument, "MODE") ||
+             ascii_equals_ignore_case(argument, "--mode")) &&
+            index + 1 < argc) {
+            config_apply_pair(config, "MODE", argv[++index], TRUE);
             continue;
         }
 
@@ -950,10 +975,11 @@ static void add_initial_transcript(struct AppUi *ui)
     snprintf(
         config_line,
         sizeof(config_line),
-        "Config: HOST=%s PORT=%u WIDTH=%u",
+        "Config: HOST=%s PORT=%u WIDTH=%u MODE=%s",
         ui->config.host,
         ui->config.port,
-        ui->config.width);
+        ui->config.width,
+        ui->config.mode);
     transcript_append(&ui->transcript, config_line);
 
     for (index = 0; index < ui->config.error_count; index++) {
@@ -1194,6 +1220,32 @@ static BOOL bridge_send_all(struct AppUi *ui, const char *text)
     return TRUE;
 }
 
+static BOOL bridge_send_command(struct AppUi *ui, const char *command)
+{
+    if (!bridge_send_all(ui, command) || !bridge_send_all(ui, "\r\n")) {
+        return FALSE;
+    }
+
+    if (!receive_bridge_output(ui, ui->bridge_output, sizeof(ui->bridge_output))) {
+        return FALSE;
+    }
+
+    append_bridge_output(ui, ui->bridge_output, command);
+    return TRUE;
+}
+
+static BOOL configure_bridge_reply_mode(struct AppUi *ui)
+{
+    char command[CONFIG_MODE_LEN + 2];
+
+    if (ui->config.mode[0] == '\0' || ascii_equals_ignore_case(ui->config.mode, "short")) {
+        return TRUE;
+    }
+
+    snprintf(command, sizeof(command), "/%s", ui->config.mode);
+    return bridge_send_command(ui, command);
+}
+
 static BOOL connect_bridge(struct AppUi *ui)
 {
     struct sockaddr_in server_addr;
@@ -1266,6 +1318,11 @@ static BOOL connect_bridge(struct AppUi *ui)
         return FALSE;
     }
     append_bridge_output(ui, ui->bridge_output, NULL);
+
+    if (!configure_bridge_reply_mode(ui)) {
+        set_status(ui, "Could not set reply mode");
+        return FALSE;
+    }
 
     set_status(ui, "Connected");
     refresh_transcript(ui);
@@ -1969,6 +2026,7 @@ static void write_scaffold_message(FILE *out)
     fputs("  host: " DEFAULT_BRIDGE_HOST "\n", out);
     fputs("  port: " DEFAULT_BRIDGE_PORT "\n", out);
     fputs("  width: " DEFAULT_TEXT_WIDTH "\n", out);
+    fputs("  mode: " DEFAULT_REPLY_MODE "\n", out);
     fputs("\n", out);
     fputs("Current milestone: bridge send and receive.\n", out);
 }

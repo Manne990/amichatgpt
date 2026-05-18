@@ -19,9 +19,11 @@ This build connects to the ChatGPT64 bridge over plain TCP and reports the
 connection status in the transcript. It connects directly to chatgpt64 on
 port 6464; tcpser is only needed for C64/CCGMS modem-style clients.
 
-Recommended bridge command while the GUI stabilizes:
+Recommended bridge command while the GUI stabilizes. AmiChatGPT switches the
+bridge to normal reply mode after it connects, so replies are a little longer
+than the C64 terminal default:
 
-  chatgpt64 start --terminal ascii --width 60
+  chatgpt64 start --terminal ascii --width 72
 
 The C64 terminal mode also works; AmiChatGPT filters PETSCII/control bytes
 before displaying the transcript.
@@ -44,18 +46,25 @@ Configuration:
     HOST=127.0.0.1
     PORT=6464
     WIDTH=72
+    MODE=normal
 
   Shell examples:
 
     AmiChatGPT HOST=127.0.0.1 PORT=6464 WIDTH=72
     AmiChatGPT --host 127.0.0.1 --port 6464 --width 72
     AmiChatGPT HOST=192.168.1.50 PORT=6464 WIDTH=72
+    AmiChatGPT --mode long
 
 Default bridge settings:
 
   HOST=127.0.0.1
   PORT=6464
   WIDTH=72
+  MODE=normal
+
+MODE controls ChatGPT64 reply length for this client. Supported values are
+short, normal, and long. The packaged default is normal, while C64/CCGMS
+sessions still start in the bridge's short-answer mode.
 
 Use 127.0.0.1 when AmiChatGPT runs in an emulator with UAE/bsdsocket
 networking on the same computer as chatgpt64. Use the bridge computer's LAN
