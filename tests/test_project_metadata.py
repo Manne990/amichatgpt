@@ -140,6 +140,27 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("layout_gadgets", source)
         self.assertNotIn("texteditor.gadget", source)
 
+    def test_configuration_milestone_is_implemented(self):
+        source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        package_readme = (ROOT / "packaging" / "README.txt").read_text(encoding="utf-8")
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+        self.assertIn("struct BridgeConfig", source)
+        self.assertIn("config_load_file", source)
+        self.assertIn("PROGDIR:AmiChatGPT.conf", source)
+        self.assertIn("config_load_tooltypes", source)
+        self.assertIn("struct WBStartup", source)
+        self.assertIn("GetDiskObject", source)
+        self.assertIn("config_load_cli_args", source)
+        self.assertIn("HOST", source)
+        self.assertIn("PORT", source)
+        self.assertIn("WIDTH", source)
+        self.assertIn("Config error:", source)
+        self.assertIn("AmiChatGPT.conf", makefile)
+        self.assertIn("Workbench ToolTypes", readme)
+        self.assertIn("AmiChatGPT --host", package_readme)
+
     def test_ci_build_script_sets_toolchain_path(self):
         script = (ROOT / "scripts" / "ci" / "build-amiga-package.sh").read_text(
             encoding="utf-8"

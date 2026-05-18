@@ -1,4 +1,6 @@
+#include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef AMICHATGPT_VERSION
@@ -23,20 +25,27 @@
 #include <intuition/intuition.h>
 #include <intuition/intuitionbase.h>
 #include <libraries/gadtools.h>
+#include <proto/icon.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <proto/gadtools.h>
 #include <proto/graphics.h>
 #include <proto/intuition.h>
+#include <workbench/icon.h>
+#include <workbench/startup.h>
 
 struct IntuitionBase *IntuitionBase = NULL;
 struct GfxBase *GfxBase = NULL;
 struct Library *GadToolsBase = NULL;
+struct Library *IconBase = NULL;
 struct Library *TextFieldBase = NULL;
 Class *TextFieldClass = NULL;
 
 #define CHAT_LINE_COUNT 48
 #define CHAT_LINE_LEN 96
+#define CONFIG_ERROR_COUNT 8
+#define CONFIG_ERROR_LEN CHAT_LINE_LEN
+#define CONFIG_HOST_LEN 64
 #define INPUT_TEXT_LEN 2048
 #define INPUT_VISIBLE_LINES 4
 #define INPUT_MIN_VISIBLE_LINES 3
@@ -62,6 +71,14 @@ Class *TextFieldClass = NULL;
 #define GID_SEND 4
 #define GID_STATUS 5
 
+struct BridgeConfig {
+    char host[CONFIG_HOST_LEN];
+    UWORD port;
+    UWORD width;
+    char errors[CONFIG_ERROR_COUNT][CONFIG_ERROR_LEN];
+    UWORD error_count;
+};
+
 struct ChatTranscript {
     struct List labels;
     struct Node nodes[CHAT_LINE_COUNT];
@@ -79,6 +96,7 @@ struct AppUi {
     struct Gadget *send_gadget;
     struct Gadget *status_gadget;
     struct Window *window;
+    struct BridgeConfig config;
     struct ChatTranscript transcript;
     WORD input_left;
     WORD input_top;
@@ -88,6 +106,286 @@ struct AppUi {
     WORD input_scroll_width;
     UWORD visible_transcript_lines;
 };
+
+static int ascii_equals_ignore_case(const char *left, const char *right)
+{
+    while (*left != '\0' && *right != '\0') {
+        if (toupper((unsigned char)*left) != toupper((unsigned char)*right)) {
+            return FALSE;
+        }
+        left++;
+        right++;
+    }
+
+    return *left == '\0' && *right == '\0';
+}
+
+static char *trim_text(char *text)
+{
+    char *end;
+
+    while (*text != '\0' && isspace((unsigned char)*text)) {
+        text++;
+    }
+
+    end = text + strlen(text);
+    while (end > text && isspace((unsigned char)*(end - 1))) {
+        end--;
+    }
+    *end = '\0';
+
+    return text;
+}
+
+static void config_add_error(struct BridgeConfig *config, const char *message)
+{
+    if (config->error_count >= CONFIG_ERROR_COUNT) {
+        return;
+    }
+
+    strncpy(config->errors[config->error_count], message, CONFIG_ERROR_LEN - 1);
+    config->errors[config->error_count][CONFIG_ERROR_LEN - 1] = '\0';
+    config->error_count++;
+}
+
+static void config_add_value_error(
+    struct BridgeConfig *config,
+    const char *key,
+    const char *value,
+    const char *reason)
+{
+    char error[CONFIG_ERROR_LEN];
+
+    snprintf(error, sizeof(error), "%s=%s ignored: %s", key, value != NULL ? value : "", reason);
+    config_add_error(config, error);
+}
+
+static void config_init_defaults(struct BridgeConfig *config)
+{
+    memset(config, 0, sizeof(*config));
+    strncpy(config->host, DEFAULT_BRIDGE_HOST, CONFIG_HOST_LEN - 1);
+    config->host[CONFIG_HOST_LEN - 1] = '\0';
+    config->port = (UWORD)strtoul(DEFAULT_BRIDGE_PORT, NULL, 10);
+    config->width = (UWORD)strtoul(DEFAULT_TEXT_WIDTH, NULL, 10);
+}
+
+static BOOL config_parse_ushort(
+    const char *text,
+    UWORD min_value,
+    UWORD max_value,
+    UWORD *result)
+{
+    char *end;
+    unsigned long value;
+
+    if (text == NULL || *text == '\0') {
+        return FALSE;
+    }
+
+    value = strtoul(text, &end, 10);
+    while (*end != '\0' && isspace((unsigned char)*end)) {
+        end++;
+    }
+
+    if (*end != '\0' || value < min_value || value > max_value) {
+        return FALSE;
+    }
+
+    *result = (UWORD)value;
+    return TRUE;
+}
+
+static BOOL config_apply_pair(
+    struct BridgeConfig *config,
+    const char *key,
+    const char *value,
+    BOOL report_unknown)
+{
+    UWORD parsed_value;
+
+    if (ascii_equals_ignore_case(key, "HOST")) {
+        if (value == NULL || *value == '\0') {
+            config_add_value_error(config, "HOST", "", "missing host name");
+            return TRUE;
+        }
+        strncpy(config->host, value, CONFIG_HOST_LEN - 1);
+        config->host[CONFIG_HOST_LEN - 1] = '\0';
+        return TRUE;
+    }
+
+    if (ascii_equals_ignore_case(key, "PORT")) {
+        if (!config_parse_ushort(value, 1, 65535, &parsed_value)) {
+            config_add_value_error(config, "PORT", value, "expected 1-65535");
+            return TRUE;
+        }
+        config->port = parsed_value;
+        return TRUE;
+    }
+
+    if (ascii_equals_ignore_case(key, "WIDTH")) {
+        if (!config_parse_ushort(value, 20, 240, &parsed_value)) {
+            config_add_value_error(config, "WIDTH", value, "expected 20-240");
+            return TRUE;
+        }
+        config->width = parsed_value;
+        return TRUE;
+    }
+
+    if (report_unknown) {
+        char error[CONFIG_ERROR_LEN];
+
+        snprintf(error, sizeof(error), "%s ignored: unknown setting", key);
+        config_add_error(config, error);
+    }
+
+    return FALSE;
+}
+
+static BOOL config_apply_assignment(
+    struct BridgeConfig *config,
+    const char *assignment,
+    BOOL report_unknown)
+{
+    char buffer[160];
+    char *key;
+    char *value;
+    char *equals;
+
+    if (assignment == NULL) {
+        return FALSE;
+    }
+
+    strncpy(buffer, assignment, sizeof(buffer) - 1);
+    buffer[sizeof(buffer) - 1] = '\0';
+
+    key = trim_text(buffer);
+    if (key[0] == '-' && key[1] == '-') {
+        key += 2;
+    }
+
+    equals = strchr(key, '=');
+    if (equals == NULL) {
+        if (report_unknown && *key != '\0') {
+            config_add_value_error(config, key, "", "expected KEY=VALUE");
+        }
+        return FALSE;
+    }
+
+    *equals = '\0';
+    value = trim_text(equals + 1);
+    key = trim_text(key);
+
+    return config_apply_pair(config, key, value, report_unknown);
+}
+
+static void config_load_file(struct BridgeConfig *config)
+{
+    FILE *file;
+    char line[160];
+    char *trimmed;
+
+    file = fopen("PROGDIR:AmiChatGPT.conf", "r");
+    if (file == NULL) {
+        file = fopen("AmiChatGPT.conf", "r");
+    }
+    if (file == NULL) {
+        return;
+    }
+
+    while (fgets(line, sizeof(line), file) != NULL) {
+        trimmed = trim_text(line);
+        if (*trimmed == '\0' || *trimmed == '#' || *trimmed == ';') {
+            continue;
+        }
+        config_apply_assignment(config, trimmed, TRUE);
+    }
+
+    fclose(file);
+}
+
+static void config_load_cli_args(struct BridgeConfig *config, int argc, char **argv)
+{
+    int index;
+    const char *argument;
+
+    for (index = 1; index < argc; index++) {
+        argument = argv[index];
+        if ((ascii_equals_ignore_case(argument, "HOST") ||
+             ascii_equals_ignore_case(argument, "--host")) &&
+            index + 1 < argc) {
+            config_apply_pair(config, "HOST", argv[++index], TRUE);
+            continue;
+        }
+        if ((ascii_equals_ignore_case(argument, "PORT") ||
+             ascii_equals_ignore_case(argument, "--port")) &&
+            index + 1 < argc) {
+            config_apply_pair(config, "PORT", argv[++index], TRUE);
+            continue;
+        }
+        if ((ascii_equals_ignore_case(argument, "WIDTH") ||
+             ascii_equals_ignore_case(argument, "--width")) &&
+            index + 1 < argc) {
+            config_apply_pair(config, "WIDTH", argv[++index], TRUE);
+            continue;
+        }
+
+        config_apply_assignment(config, argument, TRUE);
+    }
+}
+
+static void config_load_tooltypes(struct BridgeConfig *config, int argc, char **argv)
+{
+    struct WBStartup *startup;
+    struct WBArg *tool_arg;
+    struct DiskObject *disk_object;
+    BPTR old_dir;
+    char **tool_type;
+
+    if (argc != 0 || argv == NULL || IconBase == NULL) {
+        return;
+    }
+
+    startup = (struct WBStartup *)argv;
+    if (startup->sm_NumArgs < 1 || startup->sm_ArgList == NULL) {
+        return;
+    }
+
+    tool_arg = &startup->sm_ArgList[0];
+    if (tool_arg->wa_Name == NULL) {
+        return;
+    }
+
+    old_dir = 0;
+    if (tool_arg->wa_Lock != 0) {
+        old_dir = CurrentDir(tool_arg->wa_Lock);
+    }
+
+    disk_object = GetDiskObject((UBYTE *)tool_arg->wa_Name);
+
+    if (tool_arg->wa_Lock != 0) {
+        CurrentDir(old_dir);
+    }
+
+    if (disk_object == NULL) {
+        return;
+    }
+
+    for (tool_type = disk_object->do_ToolTypes; tool_type != NULL && *tool_type != NULL; tool_type++) {
+        config_apply_assignment(config, *tool_type, FALSE);
+    }
+
+    FreeDiskObject(disk_object);
+}
+
+static void load_config(struct BridgeConfig *config, int argc, char **argv)
+{
+    config_init_defaults(config);
+    config_load_file(config);
+    config_load_tooltypes(config, argc, argv);
+    if (argc > 0) {
+        config_load_cli_args(config, argc, argv);
+    }
+}
 
 static void transcript_rebuild_list(struct ChatTranscript *transcript)
 {
@@ -407,11 +705,28 @@ static void set_status(struct AppUi *ui, const char *status)
 
 static void add_initial_transcript(struct AppUi *ui)
 {
+    char config_line[CHAT_LINE_LEN];
+    UWORD index;
+
     transcript_append(&ui->transcript, "AmiChatGPT " AMICHATGPT_VERSION);
     transcript_append(&ui->transcript, "Workbench 3.x GadTools GUI prototype.");
-    transcript_append(&ui->transcript, "Bridge connection comes in the next step.");
+    transcript_append(&ui->transcript, "Configuration ready. Bridge connection comes next.");
     transcript_append(&ui->transcript, "");
     transcript_append(&ui->transcript, "Type your message and press Send.");
+    transcript_append(&ui->transcript, "");
+
+    snprintf(
+        config_line,
+        sizeof(config_line),
+        "Config: HOST=%s PORT=%u WIDTH=%u",
+        ui->config.host,
+        ui->config.port,
+        ui->config.width);
+    transcript_append(&ui->transcript, config_line);
+
+    for (index = 0; index < ui->config.error_count; index++) {
+        transcript_append_prefixed(&ui->transcript, "Config error: ", ui->config.errors[index]);
+    }
 }
 
 static BOOL open_libraries(void)
@@ -419,6 +734,7 @@ static BOOL open_libraries(void)
     IntuitionBase = (struct IntuitionBase *)OpenLibrary("intuition.library", 39);
     GfxBase = (struct GfxBase *)OpenLibrary("graphics.library", 39);
     GadToolsBase = OpenLibrary("gadtools.library", 39);
+    IconBase = OpenLibrary("icon.library", 39);
     TextFieldBase = OpenLibrary(TEXTFIELD_NAME, TEXTFIELD_VER);
     if (TextFieldBase == NULL) {
         TextFieldBase = OpenLibrary("PROGDIR:Gadgets/textfield.gadget", TEXTFIELD_VER);
@@ -444,6 +760,10 @@ static void close_libraries(void)
     if (GadToolsBase != NULL) {
         CloseLibrary(GadToolsBase);
         GadToolsBase = NULL;
+    }
+    if (IconBase != NULL) {
+        CloseLibrary(IconBase);
+        IconBase = NULL;
     }
     if (GfxBase != NULL) {
         CloseLibrary((struct Library *)GfxBase);
@@ -691,9 +1011,10 @@ static void close_app_ui(struct AppUi *ui)
     }
 }
 
-static BOOL open_app_ui(struct AppUi *ui)
+static BOOL open_app_ui(struct AppUi *ui, int argc, char **argv)
 {
     memset(ui, 0, sizeof(*ui));
+    load_config(&ui->config, argc, argv);
     transcript_init(&ui->transcript);
     add_initial_transcript(ui);
 
@@ -896,7 +1217,7 @@ static void run_event_loop(struct AppUi *ui)
     }
 }
 
-static int run_amiga_gui(void)
+static int run_amiga_gui(int argc, char **argv)
 {
     struct AppUi ui;
 
@@ -906,7 +1227,7 @@ static int run_amiga_gui(void)
         return RETURN_FAIL;
     }
 
-    if (!open_app_ui(&ui)) {
+    if (!open_app_ui(&ui, argc, argv)) {
         PutStr("AmiChatGPT: could not open the Workbench GUI.\n");
         close_app_ui(&ui);
         close_libraries();
@@ -932,7 +1253,7 @@ static void write_scaffold_message(FILE *out)
     fputs("  port: " DEFAULT_BRIDGE_PORT "\n", out);
     fputs("  width: " DEFAULT_TEXT_WIDTH "\n", out);
     fputs("\n", out);
-    fputs("Current milestone: local GUI prototype, no networking yet.\n", out);
+    fputs("Current milestone: configuration support, no networking yet.\n", out);
 }
 
 int main(int argc, char **argv)
@@ -941,7 +1262,7 @@ int main(int argc, char **argv)
     (void)argv;
 
 #ifdef AMIGA_BUILD
-    return run_amiga_gui();
+    return run_amiga_gui(argc, argv);
 #else
     write_scaffold_message(stdout);
     return 0;

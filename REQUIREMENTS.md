@@ -162,6 +162,7 @@ Actual host should be configurable.
 
 Configuration sources:
 
+- `PROGDIR:AmiChatGPT.conf`
 - Workbench icon ToolTypes
 - CLI arguments
 - built-in defaults
@@ -198,6 +199,7 @@ Protocol expectations:
 ### M2: Configuration
 
 - parse CLI arguments
+- parse `PROGDIR:AmiChatGPT.conf`
 - parse Workbench ToolTypes
 - support `HOST`, `PORT`, and `WIDTH`
 - display config errors in the transcript

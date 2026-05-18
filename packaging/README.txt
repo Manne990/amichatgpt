@@ -4,8 +4,9 @@ AmiChatGPT 0.1.0
 This is an early GUI build for the AmiChatGPT Workbench client.
 
 The current executable opens a native, resizable Workbench window with a
-scrollable transcript, a multiline textfield input editor, and a Send button. It is still offline:
-bridge configuration and TCP networking come in the next milestones.
+scrollable transcript, a multiline textfield input editor, and a Send button.
+It reads bridge configuration, but it is still offline: TCP networking comes
+in the next milestone.
 
 Target:
 - AmigaOS / Workbench 3.0 or 3.1
@@ -23,7 +24,22 @@ Run from Shell:
 
   AmiChatGPT
 
-Default bridge settings for the future network client:
+Configuration:
+
+  AmiChatGPT.conf is read from PROGDIR first.
+
+  Workbench ToolTypes are also supported:
+
+    HOST=192.168.1.50
+    PORT=6464
+    WIDTH=72
+
+  Shell examples:
+
+    AmiChatGPT HOST=192.168.1.50 PORT=6464 WIDTH=72
+    AmiChatGPT --host 192.168.1.50 --port 6464 --width 72
+
+Default bridge settings:
 
   HOST=192.168.1.50
   PORT=6464

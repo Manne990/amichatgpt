@@ -8,7 +8,7 @@ The app does not talk directly to OpenAI. It connects to a local ChatGPT64 bridg
 AmiChatGPT -> ChatGPT64 bridge -> OpenAI API
 ```
 
-This repository currently contains the first native GUI milestone: a small m68k Amiga executable, host-side tests, and packaging that produces emulator-friendly artifacts.
+This repository currently contains the first native GUI milestones: a small m68k Amiga executable, configuration loading, host-side tests, and packaging that produces emulator-friendly artifacts.
 
 ## Target
 
@@ -72,7 +72,7 @@ The simplest path is to download the GitHub Actions artifact and use one of thes
 - Mount `AmiChatGPT-0.1.0/` as a directory or hard drive in FS-UAE, WinUAE, or Amiberry.
 - Copy/extract `AmiChatGPT-0.1.0.lha` inside an Amiga environment.
 
-Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current build opens a native, resizable Workbench window with a scrollable transcript, a multiline textfield input editor with vertical scrolling, and a Send button. It is still an offline prototype; bridge networking comes next.
+Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current build opens a native, resizable Workbench window with a scrollable transcript, a multiline textfield input editor with vertical scrolling, and a Send button. It reads bridge settings from built-in defaults, `AmiChatGPT.conf`, Workbench ToolTypes, and CLI arguments. It is still an offline prototype; bridge networking comes next.
 
 Third-party notice: `textfield.gadget` 3.1 is Copyright (C) 1995 Mark Thomas. See `ThirdParty/textfield-license.txt` in the package.
 
@@ -84,4 +84,36 @@ Run ChatGPT64 on the bridge computer in ASCII mode:
 chatgpt64 start --terminal ascii --width 72
 ```
 
-The first networked version will connect to the bridge host and port defined in ToolTypes or CLI arguments.
+The first networked version will connect to the bridge host and port shown in the transcript at startup.
+
+## Configuration
+
+Default settings are packaged in `AmiChatGPT.conf`:
+
+```text
+HOST=192.168.1.50
+PORT=6464
+WIDTH=72
+```
+
+Configuration is applied in this order:
+
+1. Built-in defaults
+2. `PROGDIR:AmiChatGPT.conf`
+3. Workbench icon ToolTypes
+4. Shell CLI arguments
+
+Supported Shell examples:
+
+```sh
+AmiChatGPT HOST=192.168.1.50 PORT=6464 WIDTH=72
+AmiChatGPT --host 192.168.1.50 --port 6464 --width 72
+```
+
+Supported Workbench ToolTypes:
+
+```text
+HOST=192.168.1.50
+PORT=6464
+WIDTH=72
+```
