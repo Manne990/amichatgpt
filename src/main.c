@@ -52,6 +52,8 @@ Class *TextFieldClass = NULL;
 #define INPUT_SCROLL_WIDTH 16
 #define INPUT_SCROLL_GAP 3
 #define SEND_BUTTON_WIDTH 82
+#define SEND_BUTTON_RIGHT_INSET 18
+#define SEND_BUTTON_TOP_ADJUST 8
 
 #define GID_TRANSCRIPT 1
 #define GID_INPUT 2
@@ -246,6 +248,7 @@ static void layout_gadgets(struct AppUi *ui)
     WORD min_transcript_height;
     WORD max_input_height;
     WORD button_left;
+    WORD button_top;
     WORD text_line_height;
     BOOL needs_refresh;
 
@@ -287,7 +290,8 @@ static void layout_gadgets(struct AppUi *ui)
         transcript_height = min_transcript_height;
     }
 
-    button_left = inner_right - SEND_BUTTON_WIDTH;
+    button_left = inner_right - SEND_BUTTON_RIGHT_INSET - SEND_BUTTON_WIDTH;
+    button_top = input_top - SEND_BUTTON_TOP_ADJUST;
     input_width = button_left - inner_left - UI_GAP - INPUT_SCROLL_WIDTH - INPUT_SCROLL_GAP;
     if (input_width < 80) {
         input_width = 80;
@@ -366,7 +370,7 @@ static void layout_gadgets(struct AppUi *ui)
         GA_Left,
         button_left,
         GA_Top,
-        input_top,
+        button_top,
         GA_Width,
         SEND_BUTTON_WIDTH,
         GA_Height,
