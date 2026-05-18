@@ -46,7 +46,7 @@ struct Library *SocketBase = NULL;
 struct Library *TextFieldBase = NULL;
 Class *TextFieldClass = NULL;
 
-#define CHAT_LINE_COUNT 48
+#define CHAT_LINE_COUNT 160
 #define CHAT_LINE_LEN 96
 #define BRIDGE_PROMPT_LEN 1200
 #define BRIDGE_RESPONSE_LEN 8192

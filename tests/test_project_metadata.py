@@ -123,6 +123,7 @@ class ProjectMetadataTest(unittest.TestCase):
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         self.assertIn("AMIGA_BUILD", makefile)
         self.assertIn("OpenWindowTags", source)
+        self.assertIn("#define CHAT_LINE_COUNT 160", source)
         self.assertIn("CreateGadget", source)
         self.assertIn("textfield.gadget", source)
         self.assertIn("TEXTFIELD_MaxSize", source)

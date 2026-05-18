@@ -7,8 +7,8 @@ The current executable opens a native, resizable Workbench window with a
 scrollable transcript, a multiline textfield input editor, and a Send button.
 It reads bridge configuration and tries to connect to the configured
 ChatGPT64 bridge over TCP. It sends prompts as terminal lines, wraps long
-transcript lines for the Workbench window, and appends bridge replies to the
-transcript.
+transcript lines for the Workbench window, keeps the latest 160 wrapped
+transcript lines, and appends bridge replies to the transcript.
 
 Target:
 - AmigaOS / Workbench 3.0 or 3.1

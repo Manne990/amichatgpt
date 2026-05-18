@@ -72,7 +72,7 @@ The simplest path is to download the GitHub Actions artifact and use one of thes
 - Mount `AmiChatGPT-0.1.0/` as a directory or hard drive in FS-UAE, WinUAE, or Amiberry.
 - Copy/extract `AmiChatGPT-0.1.0.lha` inside an Amiga environment.
 
-Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current build opens a native, resizable Workbench window with a scrollable transcript, a multiline textfield input editor with vertical scrolling, and a Send button. It reads bridge settings from built-in defaults, `AmiChatGPT.conf`, Workbench ToolTypes, and CLI arguments. It connects to the configured ChatGPT64 bridge over TCP, sends the prompt as a terminal line, wraps long transcript lines for the Workbench window, and appends the bridge reply to the transcript.
+Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current build opens a native, resizable Workbench window with a scrollable transcript, a multiline textfield input editor with vertical scrolling, and a Send button. It reads bridge settings from built-in defaults, `AmiChatGPT.conf`, Workbench ToolTypes, and CLI arguments. It connects to the configured ChatGPT64 bridge over TCP, sends the prompt as a terminal line, wraps long transcript lines for the Workbench window, keeps the latest 160 wrapped transcript lines, and appends the bridge reply to the transcript.
 
 Third-party notice: `textfield.gadget` 3.1 is Copyright (C) 1995 Mark Thomas. See `ThirdParty/textfield-license.txt` in the package.
 
