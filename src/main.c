@@ -131,6 +131,8 @@ struct AppUi {
     BOOL gadtools_added;
     BOOL input_gadgets_added;
     struct AppLayout layout;
+    char bridge_prompt[BRIDGE_PROMPT_LEN];
+    char bridge_output[BRIDGE_RESPONSE_LEN];
 };
 
 static int ascii_equals_ignore_case(const char *left, const char *right)
@@ -946,7 +948,6 @@ static BOOL connect_bridge(struct AppUi *ui)
     ULONG address;
     LONG socket_handle;
     char status_line[CHAT_LINE_LEN];
-    char bridge_output[BRIDGE_RESPONSE_LEN];
 
     if (ui->bridge_connected) {
         return TRUE;
@@ -1008,11 +1009,11 @@ static BOOL connect_bridge(struct AppUi *ui)
         ui->config.port);
     append_network_message(ui, status_line);
 
-    if (!receive_bridge_output(ui, bridge_output, sizeof(bridge_output))) {
+    if (!receive_bridge_output(ui, ui->bridge_output, sizeof(ui->bridge_output))) {
         set_status(ui, "Not connected");
         return FALSE;
     }
-    append_bridge_output(ui, bridge_output, NULL);
+    append_bridge_output(ui, ui->bridge_output, NULL);
 
     set_status(ui, "Connected");
     refresh_transcript(ui);
@@ -1518,8 +1519,6 @@ static BOOL build_bridge_prompt(const char *input_text, char *prompt, ULONG prom
 static void handle_send(struct AppUi *ui)
 {
     char *input_text;
-    char bridge_prompt[BRIDGE_PROMPT_LEN];
-    char bridge_output[BRIDGE_RESPONSE_LEN];
     ULONG allocated_size;
     BOOL was_truncated;
 
@@ -1530,14 +1529,14 @@ static void handle_send(struct AppUi *ui)
         return;
     }
 
-    was_truncated = build_bridge_prompt(input_text, bridge_prompt, sizeof(bridge_prompt));
-    if (!text_has_content(bridge_prompt)) {
+    was_truncated = build_bridge_prompt(input_text, ui->bridge_prompt, sizeof(ui->bridge_prompt));
+    if (!text_has_content(ui->bridge_prompt)) {
         FreeMem(input_text, allocated_size);
         ActivateGadget(ui->input_gadget, ui->window, NULL);
         return;
     }
 
-    append_input_to_transcript(&ui->transcript, bridge_prompt);
+    append_input_to_transcript(&ui->transcript, ui->bridge_prompt);
     if (was_truncated) {
         transcript_append(&ui->transcript, "AmiChatGPT: prompt was truncated before sending.");
     }
@@ -1548,9 +1547,9 @@ static void handle_send(struct AppUi *ui)
 
     if (ui->bridge_connected) {
         set_status(ui, "Waiting for bridge");
-        if (bridge_send_all(ui, bridge_prompt) && bridge_send_all(ui, "\r\n") &&
-            receive_bridge_output(ui, bridge_output, sizeof(bridge_output))) {
-            append_bridge_output(ui, bridge_output, bridge_prompt);
+        if (bridge_send_all(ui, ui->bridge_prompt) && bridge_send_all(ui, "\r\n") &&
+            receive_bridge_output(ui, ui->bridge_output, sizeof(ui->bridge_output))) {
+            append_bridge_output(ui, ui->bridge_output, ui->bridge_prompt);
             set_status(ui, "Connected");
         } else {
             set_status(ui, "Not connected");
@@ -1620,7 +1619,7 @@ static void run_event_loop(struct AppUi *ui)
 
 static int run_amiga_gui(int argc, char **argv)
 {
-    struct AppUi ui;
+    struct AppUi *ui;
 
     if (!open_libraries()) {
         PutStr("AmiChatGPT: could not open Workbench 3.x GUI libraries.\n");
@@ -1628,15 +1627,24 @@ static int run_amiga_gui(int argc, char **argv)
         return RETURN_FAIL;
     }
 
-    if (!open_app_ui(&ui, argc, argv)) {
-        PutStr("AmiChatGPT: could not open the Workbench GUI.\n");
-        close_app_ui(&ui);
+    ui = AllocMem(sizeof(*ui), MEMF_CLEAR);
+    if (ui == NULL) {
+        PutStr("AmiChatGPT: not enough memory for the application state.\n");
         close_libraries();
         return RETURN_FAIL;
     }
 
-    run_event_loop(&ui);
-    close_app_ui(&ui);
+    if (!open_app_ui(ui, argc, argv)) {
+        PutStr("AmiChatGPT: could not open the Workbench GUI.\n");
+        close_app_ui(ui);
+        FreeMem(ui, sizeof(*ui));
+        close_libraries();
+        return RETURN_FAIL;
+    }
+
+    run_event_loop(ui);
+    close_app_ui(ui);
+    FreeMem(ui, sizeof(*ui));
     close_libraries();
 
     return RETURN_OK;
