@@ -202,6 +202,8 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("bridge_send_all", source)
         self.assertIn("receive_bridge_output", source)
         self.assertIn("append_bridge_output", source)
+        self.assertIn("bridge_output_find_prompt", source)
+        self.assertIn("bridge_output_is_display_byte", source)
         self.assertIn("point_hits_send_button", source)
         self.assertIn("is_send_gadget_event", source)
         self.assertIn("GA_Immediate", source)

@@ -836,9 +836,56 @@ static BOOL open_socket_library(struct AppUi *ui)
     return TRUE;
 }
 
+static BOOL bridge_output_is_display_byte(unsigned char value)
+{
+    return value >= 32 && value <= 126;
+}
+
+static BOOL bridge_output_find_prompt(const char *output, ULONG length, ULONG *prompt_offset)
+{
+    LONG index;
+    LONG space_index;
+
+    if (length < 2) {
+        return FALSE;
+    }
+
+    space_index = -1;
+    index = (LONG)length - 1;
+    while (index >= 0) {
+        unsigned char value;
+
+        value = (unsigned char)output[index];
+        if (!bridge_output_is_display_byte(value)) {
+            index--;
+            continue;
+        }
+
+        if (space_index < 0) {
+            if (value != ' ') {
+                return FALSE;
+            }
+            space_index = index;
+            index--;
+            continue;
+        }
+
+        if (value == '>') {
+            if (prompt_offset != NULL) {
+                *prompt_offset = (ULONG)index;
+            }
+            return TRUE;
+        }
+
+        return FALSE;
+    }
+
+    return FALSE;
+}
+
 static BOOL bridge_output_has_prompt(const char *output, ULONG length)
 {
-    return length >= 2 && output[length - 2] == '>' && output[length - 1] == ' ';
+    return bridge_output_find_prompt(output, length, NULL);
 }
 
 static BOOL receive_bridge_output(struct AppUi *ui, char *output, ULONG output_size)
@@ -879,17 +926,46 @@ static BOOL receive_bridge_output(struct AppUi *ui, char *output, ULONG output_s
     return TRUE;
 }
 
+static void append_sanitized_bridge_line(
+    struct ChatTranscript *transcript,
+    const char *source_line,
+    const char *echo_line)
+{
+    char clean_line[CHAT_LINE_LEN];
+    UWORD used;
+    char *line;
+
+    used = 0;
+    while (*source_line != '\0' && used < CHAT_LINE_LEN - 1) {
+        unsigned char value;
+
+        value = (unsigned char)*source_line++;
+        if (bridge_output_is_display_byte(value)) {
+            clean_line[used++] = (char)value;
+        } else if (value == '\t') {
+            clean_line[used++] = ' ';
+        }
+    }
+    clean_line[used] = '\0';
+
+    line = trim_text(clean_line);
+    if (*line != '\0' && strcmp(line, ">") != 0 &&
+        (echo_line == NULL || strcmp(line, echo_line) != 0)) {
+        transcript_append(transcript, line);
+    }
+}
+
 static void append_bridge_output(struct AppUi *ui, char *output, const char *echo_line)
 {
     char *cursor;
     char *line_end;
-    char *line;
     char saved;
     ULONG length;
+    ULONG prompt_offset;
 
     length = strlen(output);
-    if (bridge_output_has_prompt(output, length)) {
-        output[length - 2] = '\0';
+    if (bridge_output_find_prompt(output, length, &prompt_offset)) {
+        output[prompt_offset] = '\0';
     }
 
     cursor = output;
@@ -908,12 +984,7 @@ static void append_bridge_output(struct AppUi *ui, char *output, const char *ech
 
         saved = *line_end;
         *line_end = '\0';
-        line = trim_text(cursor);
-
-        if (*line != '\0' && strcmp(line, ">") != 0 &&
-            (echo_line == NULL || strcmp(line, echo_line) != 0)) {
-            transcript_append(&ui->transcript, line);
-        }
+        append_sanitized_bridge_line(&ui->transcript, cursor, echo_line);
 
         if (saved == '\0') {
             break;
