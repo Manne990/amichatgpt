@@ -4,7 +4,7 @@ AmiChatGPT 0.1.0
 This is an early GUI build for the AmiChatGPT Workbench client.
 
 The current executable opens a native, resizable Workbench window with a
-scrollable transcript, a custom three-line input editor, and a Send button. It is still offline:
+scrollable transcript, a multiline textfield input editor, and a Send button. It is still offline:
 bridge configuration and TCP networking come in the next milestones.
 
 Target:
@@ -13,6 +13,11 @@ Target:
 - no FPU requirement
 
 Future versions will connect to the ChatGPT64 bridge over plain TCP.
+
+Bundled runtime:
+- Gadgets/textfield.gadget provides the multiline prompt editor.
+- textfield.gadget 3.1 is Copyright (C) 1995 Mark Thomas.
+- See ThirdParty/textfield-license.txt.
 
 Run from Shell:
 

@@ -53,6 +53,7 @@ Outputs are written to `dist/`:
 - `dist/AmiChatGPT-0.1.0.tar.gz` - fallback host archive when `lha` is not available
 
 The package includes `AmiChatGPT.info`, so Workbench can show the application icon next to the executable.
+It also includes `Gadgets/textfield.gadget`, a third-party BOOPSI multiline text input gadget used by the prompt editor.
 
 ## Create an ADF Locally
 
@@ -71,7 +72,9 @@ The simplest path is to download the GitHub Actions artifact and use one of thes
 - Mount `AmiChatGPT-0.1.0/` as a directory or hard drive in FS-UAE, WinUAE, or Amiberry.
 - Copy/extract `AmiChatGPT-0.1.0.lha` inside an Amiga environment.
 
-Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current build opens a native, resizable Workbench window with a scrollable transcript, a custom three-line input editor, and a Send button. It is still an offline prototype; bridge networking comes next.
+Then run `AmiChatGPT` from Shell or open the application icon from Workbench. The current build opens a native, resizable Workbench window with a scrollable transcript, a multiline textfield input editor with vertical scrolling, and a Send button. It is still an offline prototype; bridge networking comes next.
+
+Third-party notice: `textfield.gadget` 3.1 is Copyright (C) 1995 Mark Thomas. See `ThirdParty/textfield-license.txt` in the package.
 
 ## Bridge
 

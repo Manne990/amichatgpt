@@ -12,7 +12,7 @@ Build the simplest useful Workbench chat client:
 | read-only                            |
 |                                      |
 +--------------------------------------+
-| [ three-line input editor        ] [Send]
+| [ multiline prompt editor        ] [Send]
 +--------------------------------------+
 ```
 
@@ -51,6 +51,7 @@ Not a primary target for the first version:
 Required on the Amiga:
 
 - Workbench 3.0/3.1-compatible environment
+- bundled `Gadgets/textfield.gadget` for multiline prompt input
 - TCP stack exposing `bsdsocket.library`
 - enough RAM for a small GUI and network client
 
@@ -126,7 +127,10 @@ First version should use native Amiga UI concepts:
 - Intuition window
 - GadTools where practical
 - read-only scrollback area
-- custom three-line input editor for prompts
+- multiline prompt editor using bundled `textfield.gadget`
+- vertical prompt scrollbar only
+- line wrapping in the prompt editor
+- prompt text limited by maximum character count, not by line count
 - Send button
 - close gadget
 - keyboard editing in the input area
@@ -170,7 +174,7 @@ PORT=6464
 WIDTH=72
 ```
 
-The app sends one user-entered line followed by CR/LF and reads the bridge reply.
+The app sends one user-entered prompt followed by CR/LF and reads the bridge reply.
 
 Protocol expectations:
 
@@ -186,7 +190,7 @@ Protocol expectations:
 
 - open a Workbench window
 - show a scrollable transcript area
-- show a custom three-line input editor
+- show a multiline prompt editor backed by `textfield.gadget`
 - show a Send button
 - append local test text to the transcript
 - no networking yet

@@ -10,7 +10,7 @@ HOST_CC ?= cc
 HOST_CFLAGS ?= -std=c99 -Wall -Wextra -pedantic -O2
 
 AMIGA_CC ?= m68k-amigaos-gcc
-AMIGA_CFLAGS ?= -m68000 -Os -Wall -Wextra -DAMIGA_BUILD
+AMIGA_CFLAGS ?= -m68000 -Os -Wall -Wextra -DAMIGA_BUILD -Ithird_party/textfield/include
 AMIGA_LDFLAGS ?= -noixemul
 
 LHA ?= $(shell command -v lha 2>/dev/null)
@@ -23,7 +23,9 @@ PACKAGE_FILES := $(PACKAGE_DIR)/$(APP_NAME) \
 	$(PACKAGE_DIR)/$(APP_NAME).info \
 	$(PACKAGE_DIR)/README.txt \
 	$(PACKAGE_DIR)/VERSION \
-	$(PACKAGE_DIR)/AmiChatGPT.conf
+	$(PACKAGE_DIR)/AmiChatGPT.conf \
+	$(PACKAGE_DIR)/Gadgets/textfield.gadget \
+	$(PACKAGE_DIR)/ThirdParty/textfield-license.txt
 
 .PHONY: all host-build host-test test amiga package package-dir archive adf clean
 
@@ -53,13 +55,15 @@ package: package-dir archive adf
 
 package-dir: $(PACKAGE_FILES)
 
-$(PACKAGE_FILES): $(AMIGA_BIN) packaging/$(APP_NAME).info packaging/README.txt VERSION | $(DIST_DIR)
+$(PACKAGE_FILES): $(AMIGA_BIN) packaging/$(APP_NAME).info packaging/README.txt VERSION packaging/Gadgets/textfield.gadget packaging/ThirdParty/textfield-license.txt | $(DIST_DIR)
 	rm -rf $(PACKAGE_DIR)
-	mkdir -p $(PACKAGE_DIR)
+	mkdir -p $(PACKAGE_DIR)/Gadgets $(PACKAGE_DIR)/ThirdParty
 	cp $(AMIGA_BIN) $(PACKAGE_DIR)/$(APP_NAME)
 	cp packaging/$(APP_NAME).info $(PACKAGE_DIR)/$(APP_NAME).info
 	cp packaging/README.txt $(PACKAGE_DIR)/README.txt
 	cp VERSION $(PACKAGE_DIR)/VERSION
+	cp packaging/Gadgets/textfield.gadget $(PACKAGE_DIR)/Gadgets/textfield.gadget
+	cp packaging/ThirdParty/textfield-license.txt $(PACKAGE_DIR)/ThirdParty/textfield-license.txt
 	printf "HOST=192.168.1.50\nPORT=6464\nWIDTH=72\n" > $(PACKAGE_DIR)/AmiChatGPT.conf
 
 archive: $(PACKAGE_FILES)
@@ -84,6 +88,10 @@ $(ADF_IMAGE): $(PACKAGE_FILES)
 			+ write "$(PACKAGE_DIR)/README.txt" \
 			+ write "$(PACKAGE_DIR)/VERSION" \
 			+ write "$(PACKAGE_DIR)/AmiChatGPT.conf" \
+			+ makedir "Gadgets" \
+			+ write "$(PACKAGE_DIR)/Gadgets/textfield.gadget" "Gadgets/textfield.gadget" \
+			+ makedir "ThirdParty" \
+			+ write "$(PACKAGE_DIR)/ThirdParty/textfield-license.txt" "ThirdParty/textfield-license.txt" \
 			+ list; \
 		echo "Wrote $(ADF_IMAGE)"; \
 	else \

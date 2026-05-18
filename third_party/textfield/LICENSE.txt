@@ -1,0 +1,49 @@
+License for textfield.gadget version 3.1
+
+The files included are textfield.gadget and its documentation.
+
+
+COPYRIGHT
+
+textfield.gadget 3.1 is Copyright © 1995 Mark Thomas
+All rights reserved.
+
+
+DISCLAIMER
+
+The files are provided "AS-IS" and with no warranties.  Use at your
+own risk.
+
+
+DISTRIBUTION
+
+The files may be distrubuted as needed.  That means that for products
+that use the textfield.gadget file, only that file needs to be
+distributed.  For development purposes, the gadget and its
+documentation should be all distributed together.
+
+
+LICENSE
+
+The license is the same for all software, regardless of what type of
+software the gadget class is used in: commercial, freeware, shareware,
+or whatever.
+
+1) Note in the program and documentation that textfield.gadget is
+   Copyright © 1995 Mark Thomas.
+
+2) You must give me a copy (address below) of the software it is used
+   in which includes different versions of the software that use the
+   gadget.  There should be no cost to me.  The purpose is to track
+   the gadget's usage for future developments.
+
+
+ADDRESS
+
+Mark Thomas
+9036 N. Lamar, Apt. #125
+Austin, TX  78753
+
+or
+
+mthomas@zilker.net

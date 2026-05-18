@@ -21,6 +21,7 @@ class ProjectMetadataTest(unittest.TestCase):
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         for target in ("host-test", "test", "amiga", "package", "adf"):
             self.assertRegex(makefile, rf"(^|\n){re.escape(target)}:")
+        self.assertIn("third_party/textfield/include", makefile)
 
     def test_workbench_icon_is_packaged(self):
         icon = ROOT / "packaging" / "AmiChatGPT.info"
@@ -51,6 +52,17 @@ class ProjectMetadataTest(unittest.TestCase):
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         self.assertIn("packaging/$(APP_NAME).info", makefile)
         self.assertIn("$(PACKAGE_DIR)/$(APP_NAME).info", makefile)
+
+    def test_textfield_gadget_runtime_is_packaged(self):
+        gadget = ROOT / "packaging" / "Gadgets" / "textfield.gadget"
+        license_file = ROOT / "packaging" / "ThirdParty" / "textfield-license.txt"
+        vendored_header = ROOT / "third_party" / "textfield" / "include" / "gadgets" / "textfield.h"
+
+        self.assertTrue(gadget.exists())
+        self.assertGreater(gadget.stat().st_size, 0)
+        self.assertTrue(license_file.exists())
+        self.assertIn("Copyright", license_file.read_text(encoding="latin-1"))
+        self.assertTrue(vendored_header.exists())
 
     def test_workbench_icon_images_are_present(self):
         data = (ROOT / "packaging" / "AmiChatGPT.info").read_bytes()
@@ -112,11 +124,13 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("AMIGA_BUILD", makefile)
         self.assertIn("OpenWindowTags", source)
         self.assertIn("CreateGadget", source)
+        self.assertIn("textfield.gadget", source)
+        self.assertIn("TEXTFIELD_MaxSize", source)
+        self.assertIn("INPUT_TEXT_LEN 2048", source)
         self.assertIn("LISTVIEW_KIND", source)
         self.assertIn("BUTTON_KIND", source)
-        self.assertIn("draw_input_editor", source)
         self.assertIn("IDCMP_VANILLAKEY", source)
-        self.assertIn("IDCMP_MOUSEBUTTONS", source)
+        self.assertIn("IDCMP_RAWKEY", source)
         self.assertIn("WA_SizeGadget", source)
         self.assertIn("WA_MaxWidth", source)
         self.assertIn("WA_MaxHeight", source)
@@ -124,7 +138,6 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("BorderBottom", source)
         self.assertIn("IDCMP_NEWSIZE", source)
         self.assertIn("layout_gadgets", source)
-        self.assertIn("INPUT_LINE_COUNT 3", source)
         self.assertNotIn("texteditor.gadget", source)
 
     def test_ci_build_script_sets_toolchain_path(self):
@@ -140,6 +153,7 @@ class ProjectMetadataTest(unittest.TestCase):
         package_readme = (ROOT / "packaging" / "README.txt").read_text(encoding="utf-8")
         self.assertIn("Load in an Emulator", readme)
         self.assertIn("This is an early GUI build", package_readme)
+        self.assertIn("textfield.gadget", package_readme)
 
 
 if __name__ == "__main__":
