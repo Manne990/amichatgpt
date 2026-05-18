@@ -137,8 +137,12 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("BorderLeft", source)
         self.assertIn("BorderBottom", source)
         self.assertIn("IDCMP_NEWSIZE", source)
+        self.assertIn("struct AppLayout", source)
+        self.assertIn("compute_app_layout", source)
         self.assertIn("layout_gadgets", source)
+        self.assertIn("add_app_gadgets", source)
         self.assertNotIn("texteditor.gadget", source)
+        self.assertNotIn("WA_Gadgets", source)
 
     def test_configuration_milestone_is_implemented(self):
         source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")

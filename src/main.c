@@ -92,6 +92,26 @@ struct ChatTranscript {
     UWORD count;
 };
 
+struct AppLayout {
+    WORD transcript_left;
+    WORD transcript_top;
+    WORD transcript_width;
+    WORD transcript_height;
+    WORD input_left;
+    WORD input_top;
+    WORD input_width;
+    WORD input_height;
+    WORD input_scroll_left;
+    WORD input_scroll_top;
+    WORD input_scroll_width;
+    WORD input_scroll_height;
+    WORD send_left;
+    WORD send_top;
+    WORD send_width;
+    WORD send_height;
+    UWORD visible_transcript_lines;
+};
+
 struct AppUi {
     struct Screen *screen;
     APTR visual_info;
@@ -106,13 +126,9 @@ struct AppUi {
     struct ChatTranscript transcript;
     LONG bridge_socket;
     BOOL bridge_connected;
-    WORD input_left;
-    WORD input_top;
-    WORD input_width;
-    WORD input_height;
-    WORD input_scroll_left;
-    WORD input_scroll_width;
-    UWORD visible_transcript_lines;
+    BOOL gadtools_added;
+    BOOL input_gadgets_added;
+    struct AppLayout layout;
 };
 
 static int ascii_equals_ignore_case(const char *left, const char *right)
@@ -452,7 +468,7 @@ static void refresh_transcript(struct AppUi *ui)
         return;
     }
 
-    visible_lines = ui->visible_transcript_lines;
+    visible_lines = ui->layout.visible_transcript_lines;
     if (visible_lines == 0) {
         visible_lines = 1;
     }
@@ -538,8 +554,9 @@ static struct TagItem input_text_to_scroll[] = {
     {TAG_DONE, 0},
 };
 
-static void layout_gadgets(struct AppUi *ui)
+static void compute_app_layout(struct AppUi *ui)
 {
+    struct AppLayout *layout;
     WORD inner_left;
     WORD inner_top;
     WORD inner_right;
@@ -558,11 +575,13 @@ static void layout_gadgets(struct AppUi *ui)
     WORD button_top;
     WORD button_height;
     WORD text_line_height;
-    BOOL needs_refresh;
 
     if (ui->window == NULL) {
         return;
     }
+
+    layout = &ui->layout;
+    memset(layout, 0, sizeof(*layout));
 
     inner_left = ui->window->BorderLeft + UI_MARGIN;
     inner_top = ui->window->BorderTop + UI_MARGIN;
@@ -609,33 +628,57 @@ static void layout_gadgets(struct AppUi *ui)
         input_width = 80;
     }
 
-    ui->visible_transcript_lines = transcript_height / text_line_height;
-    if (ui->visible_transcript_lines == 0) {
-        ui->visible_transcript_lines = 1;
+    layout->transcript_left = inner_left;
+    layout->transcript_top = transcript_top;
+    layout->transcript_width = content_width;
+    layout->transcript_height = transcript_height;
+    layout->input_left = inner_left;
+    layout->input_top = input_top;
+    layout->input_width = input_width;
+    layout->input_height = input_area_height;
+    layout->input_scroll_left = inner_left + input_width + INPUT_SCROLL_GAP;
+    layout->input_scroll_top = input_top;
+    layout->input_scroll_width = INPUT_SCROLL_WIDTH;
+    layout->input_scroll_height = input_area_height;
+    layout->send_left = button_left;
+    layout->send_top = button_top;
+    layout->send_width = SEND_BUTTON_WIDTH;
+    layout->send_height = button_height;
+    layout->visible_transcript_lines = transcript_height / text_line_height;
+    if (layout->visible_transcript_lines == 0) {
+        layout->visible_transcript_lines = 1;
     }
+}
+
+static void layout_gadgets(struct AppUi *ui)
+{
+    struct AppLayout *layout;
+    BOOL needs_refresh;
+
+    if (ui->window == NULL) {
+        return;
+    }
+
+    compute_app_layout(ui);
+    layout = &ui->layout;
 
     clear_window_content(ui);
 
-    GT_SetGadgetAttrs(
-        ui->transcript_gadget,
-        ui->window,
-        NULL,
-        GA_Left,
-        inner_left,
-        GA_Top,
-        transcript_top,
-        GA_Width,
-        content_width,
-        GA_Height,
-        transcript_height,
-        TAG_DONE);
-
-    ui->input_left = inner_left;
-    ui->input_top = input_top;
-    ui->input_width = input_width;
-    ui->input_height = input_area_height;
-    ui->input_scroll_left = inner_left + input_width + INPUT_SCROLL_GAP;
-    ui->input_scroll_width = INPUT_SCROLL_WIDTH;
+    if (ui->transcript_gadget != NULL) {
+        GT_SetGadgetAttrs(
+            ui->transcript_gadget,
+            ui->window,
+            NULL,
+            GA_Left,
+            layout->transcript_left,
+            GA_Top,
+            layout->transcript_top,
+            GA_Width,
+            layout->transcript_width,
+            GA_Height,
+            layout->transcript_height,
+            TAG_DONE);
+    }
 
     if (ui->input_gadget != NULL) {
         needs_refresh = SetGadgetAttrs(
@@ -643,17 +686,24 @@ static void layout_gadgets(struct AppUi *ui)
             ui->window,
             NULL,
             GA_Left,
-            ui->input_left,
+            layout->input_left,
             GA_Top,
-            ui->input_top,
+            layout->input_top,
             GA_Width,
-            ui->input_width,
+            layout->input_width,
             GA_Height,
-            ui->input_height,
+            layout->input_height,
             TAG_DONE);
         if (needs_refresh) {
             RefreshGList(ui->input_gadget, ui->window, NULL, 1);
         }
+
+        layout->input_top = ui->input_gadget->TopEdge;
+        layout->input_height = ui->input_gadget->Height;
+        layout->input_scroll_top = layout->input_top;
+        layout->input_scroll_height = layout->input_height;
+        layout->send_top = layout->input_top;
+        layout->send_height = layout->input_height;
     }
 
     if (ui->input_scroll_gadget != NULL) {
@@ -662,45 +712,44 @@ static void layout_gadgets(struct AppUi *ui)
             ui->window,
             NULL,
             GA_Left,
-            ui->input_scroll_left,
+            layout->input_scroll_left,
             GA_Top,
-            ui->input_top,
+            layout->input_scroll_top,
             GA_Width,
-            ui->input_scroll_width,
+            layout->input_scroll_width,
             GA_Height,
-            ui->input_height,
+            layout->input_scroll_height,
             TAG_DONE);
         if (needs_refresh) {
             RefreshGList(ui->input_scroll_gadget, ui->window, NULL, 1);
         }
     }
 
-    if (ui->input_gadget != NULL) {
-        button_top = ui->input_gadget->TopEdge;
-        button_height = ui->input_gadget->Height;
+    if (ui->send_gadget != NULL) {
+        GT_SetGadgetAttrs(
+            ui->send_gadget,
+            ui->window,
+            NULL,
+            GA_Left,
+            layout->send_left,
+            GA_Top,
+            layout->send_top,
+            GA_Width,
+            layout->send_width,
+            GA_Height,
+            layout->send_height,
+            TAG_DONE);
+        /* BUTTON_KIND keeps its original rectangle unless the Intuition fields move too. */
+        ui->send_gadget->LeftEdge = layout->send_left;
+        ui->send_gadget->TopEdge = layout->send_top;
+        ui->send_gadget->Width = layout->send_width;
+        ui->send_gadget->Height = layout->send_height;
     }
 
-    GT_SetGadgetAttrs(
-        ui->send_gadget,
-        ui->window,
-        NULL,
-        GA_Left,
-        button_left,
-        GA_Top,
-        button_top,
-        GA_Width,
-        SEND_BUTTON_WIDTH,
-        GA_Height,
-        button_height,
-        TAG_DONE);
-    /* BUTTON_KIND keeps its original rectangle unless the Intuition fields move too. */
-    ui->send_gadget->LeftEdge = button_left;
-    ui->send_gadget->TopEdge = button_top;
-    ui->send_gadget->Width = SEND_BUTTON_WIDTH;
-    ui->send_gadget->Height = button_height;
-
-    RefreshGList(ui->gadgets, ui->window, NULL, -1);
-    if (ui->input_scroll_gadget != NULL) {
+    if (ui->gadtools_added && ui->gadgets != NULL) {
+        RefreshGList(ui->gadgets, ui->window, NULL, -1);
+    }
+    if (ui->input_gadgets_added && ui->input_scroll_gadget != NULL) {
         RefreshGList(ui->input_scroll_gadget, ui->window, NULL, -1);
     }
     refresh_transcript(ui);
@@ -932,7 +981,15 @@ static BOOL create_gadgets(struct AppUi *ui)
         return FALSE;
     }
 
-    init_new_gadget(&ng, ui->visual_info, UI_MARGIN, UI_MARGIN, 536, 164, NULL, GID_TRANSCRIPT);
+    init_new_gadget(
+        &ng,
+        ui->visual_info,
+        ui->layout.transcript_left,
+        ui->layout.transcript_top,
+        ui->layout.transcript_width,
+        ui->layout.transcript_height,
+        NULL,
+        GID_TRANSCRIPT);
     tail = CreateGadget(
         LISTVIEW_KIND,
         tail,
@@ -949,7 +1006,15 @@ static BOOL create_gadgets(struct AppUi *ui)
     }
     ui->transcript_gadget = tail;
 
-    init_new_gadget(&ng, ui->visual_info, 486, 194, SEND_BUTTON_WIDTH, 54, "Send", GID_SEND);
+    init_new_gadget(
+        &ng,
+        ui->visual_info,
+        ui->layout.send_left,
+        ui->layout.send_top,
+        ui->layout.send_width,
+        ui->layout.send_height,
+        "Send",
+        GID_SEND);
     tail = CreateGadget(BUTTON_KIND, tail, &ng, TAG_DONE);
     if (tail == NULL) {
         return FALSE;
@@ -967,13 +1032,13 @@ static BOOL create_textfield_input(struct AppUi *ui)
         GA_ID,
         GID_INPUT_SCROLL,
         GA_Left,
-        ui->input_scroll_left,
+        ui->layout.input_scroll_left,
         GA_Top,
-        ui->input_top,
+        ui->layout.input_scroll_top,
         GA_Width,
-        ui->input_scroll_width,
+        ui->layout.input_scroll_width,
         GA_Height,
-        ui->input_height,
+        ui->layout.input_scroll_height,
         GA_RelVerify,
         TRUE,
         ICA_MAP,
@@ -999,13 +1064,13 @@ static BOOL create_textfield_input(struct AppUi *ui)
         GA_ID,
         GID_INPUT,
         GA_Left,
-        ui->input_left,
+        ui->layout.input_left,
         GA_Top,
-        ui->input_top,
+        ui->layout.input_top,
         GA_Width,
-        ui->input_width,
+        ui->layout.input_width,
         GA_Height,
-        ui->input_height,
+        ui->layout.input_height,
         GA_Previous,
         ui->input_scroll_gadget,
         GA_RelVerify,
@@ -1041,10 +1106,24 @@ static BOOL create_textfield_input(struct AppUi *ui)
         ui->input_gadget,
         TAG_DONE);
 
-    AddGList(ui->window, ui->input_scroll_gadget, -1, -1, NULL);
-    RefreshGList(ui->input_scroll_gadget, ui->window, NULL, -1);
-
     return TRUE;
+}
+
+static void add_app_gadgets(struct AppUi *ui)
+{
+    if (ui->window == NULL) {
+        return;
+    }
+
+    if (ui->gadgets != NULL && !ui->gadtools_added) {
+        AddGList(ui->window, ui->gadgets, -1, -1, NULL);
+        ui->gadtools_added = TRUE;
+    }
+
+    if (ui->input_scroll_gadget != NULL && !ui->input_gadgets_added) {
+        AddGList(ui->window, ui->input_scroll_gadget, -1, -1, NULL);
+        ui->input_gadgets_added = TRUE;
+    }
 }
 
 static BOOL open_app_window(struct AppUi *ui)
@@ -1083,8 +1162,6 @@ static BOOL open_app_window(struct AppUi *ui)
         TRUE,
         WA_Activate,
         TRUE,
-        WA_Gadgets,
-        ui->gadgets,
         WA_IDCMP,
         IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_NEWSIZE | IDCMP_RAWKEY |
             IDCMP_VANILLAKEY | BUTTONIDCMP | LISTVIEWIDCMP,
@@ -1094,12 +1171,16 @@ static BOOL open_app_window(struct AppUi *ui)
         return FALSE;
     }
 
-    layout_gadgets(ui);
-    GT_RefreshWindow(ui->window, NULL);
+    compute_app_layout(ui);
+    if (!create_gadgets(ui)) {
+        return FALSE;
+    }
     if (!create_textfield_input(ui)) {
         return FALSE;
     }
+    add_app_gadgets(ui);
     layout_gadgets(ui);
+    GT_RefreshWindow(ui->window, NULL);
     ActivateGadget(ui->input_gadget, ui->window, NULL);
 
     return TRUE;
@@ -1108,8 +1189,13 @@ static BOOL open_app_window(struct AppUi *ui)
 static void close_app_ui(struct AppUi *ui)
 {
     close_bridge_connection(ui);
-    if (ui->window != NULL && ui->input_scroll_gadget != NULL) {
+    if (ui->window != NULL && ui->input_gadgets_added && ui->input_scroll_gadget != NULL) {
         RemoveGList(ui->window, ui->input_scroll_gadget, -1);
+        ui->input_gadgets_added = FALSE;
+    }
+    if (ui->window != NULL && ui->gadtools_added && ui->gadgets != NULL) {
+        RemoveGList(ui->window, ui->gadgets, -1);
+        ui->gadtools_added = FALSE;
     }
     if (ui->input_gadget != NULL) {
         DisposeObject(ui->input_gadget);
@@ -1152,10 +1238,6 @@ static BOOL open_app_ui(struct AppUi *ui, int argc, char **argv)
 
     ui->visual_info = GetVisualInfo(ui->screen, TAG_DONE);
     if (ui->visual_info == NULL) {
-        return FALSE;
-    }
-
-    if (!create_gadgets(ui)) {
         return FALSE;
     }
 
