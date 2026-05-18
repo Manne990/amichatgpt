@@ -1142,7 +1142,15 @@ static BOOL create_gadgets(struct AppUi *ui)
         ui->layout.send_height,
         "Send",
         GID_SEND);
-    tail = CreateGadget(BUTTON_KIND, tail, &ng, TAG_DONE);
+    tail = CreateGadget(
+        BUTTON_KIND,
+        tail,
+        &ng,
+        GA_RelVerify,
+        TRUE,
+        GA_Immediate,
+        TRUE,
+        TAG_DONE);
     if (tail == NULL) {
         return FALSE;
     }
@@ -1290,8 +1298,9 @@ static BOOL open_app_window(struct AppUi *ui)
         WA_Activate,
         TRUE,
         WA_IDCMP,
-        IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_NEWSIZE | IDCMP_RAWKEY |
-            IDCMP_VANILLAKEY | IDCMP_MOUSEBUTTONS | BUTTONIDCMP | LISTVIEWIDCMP,
+        IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_NEWSIZE | IDCMP_GADGETDOWN |
+            IDCMP_RAWKEY | IDCMP_VANILLAKEY | IDCMP_MOUSEBUTTONS | BUTTONIDCMP |
+            LISTVIEWIDCMP,
         TAG_DONE);
 
     if (ui->window == NULL) {
@@ -1529,6 +1538,11 @@ static BOOL point_hits_send_button(struct AppUi *ui, WORD x, WORD y)
            y >= layout->send_top && y < layout->send_top + layout->send_height;
 }
 
+static BOOL is_send_gadget_event(struct AppUi *ui, struct Gadget *gadget, UWORD gadget_id)
+{
+    return gadget_id == GID_SEND || (ui->send_gadget != NULL && gadget == ui->send_gadget);
+}
+
 static void handle_send(struct AppUi *ui)
 {
     char *input_text;
@@ -1600,6 +1614,7 @@ static void run_event_loop(struct AppUi *ui)
             mouse_x = message->MouseX;
             mouse_y = message->MouseY;
             gadget_id = 0;
+            gadget = NULL;
             if (message->IAddress != NULL) {
                 gadget = (struct Gadget *)message->IAddress;
                 gadget_id = gadget->GadgetID;
@@ -1625,8 +1640,14 @@ static void run_event_loop(struct AppUi *ui)
                     }
                     break;
 
+                case IDCMP_GADGETDOWN:
+                    if (is_send_gadget_event(ui, gadget, gadget_id)) {
+                        handle_send(ui);
+                    }
+                    break;
+
                 case IDCMP_GADGETUP:
-                    if (gadget_id == GID_SEND) {
+                    if (is_send_gadget_event(ui, gadget, gadget_id)) {
                         handle_send(ui);
                     }
                     break;
