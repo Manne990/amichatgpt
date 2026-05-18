@@ -74,6 +74,22 @@ class ProjectMetadataTest(unittest.TestCase):
             data[image_data_offset : image_data_offset + image_data_size],
             bytes(image_data_size),
         )
+        row_bytes = row_words * 2
+        image_data = data[image_data_offset : image_data_offset + image_data_size]
+        occupied_x = []
+        occupied_y = []
+        for y in range(height):
+            for plane in range(depth):
+                row_offset = plane * row_bytes * height + y * row_bytes
+                row = image_data[row_offset : row_offset + row_bytes]
+                for x in range(width):
+                    if row[x // 8] & (1 << (7 - (x % 8))):
+                        occupied_x.append(x)
+                        occupied_y.append(y)
+        occupied_width = max(occupied_x) - min(occupied_x) + 1
+        occupied_height = max(occupied_y) - min(occupied_y) + 1
+        self.assertGreaterEqual(occupied_width, occupied_height * 3 // 2)
+
         select_render = struct.unpack_from(">I", data, 26)[0]
         if select_render == 0:
             self.assertEqual(selected_image_offset, len(data))
