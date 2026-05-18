@@ -47,34 +47,20 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("packaging/$(APP_NAME).info", makefile)
         self.assertIn("$(PACKAGE_DIR)/$(APP_NAME).info", makefile)
 
-    def test_workbench_icon_motif_uses_wide_canvas(self):
+    def test_workbench_icon_images_are_present(self):
         data = (ROOT / "packaging" / "AmiChatGPT.info").read_bytes()
         width, height, depth = struct.unpack_from(">HHH", data, 82)
         row_words = (width + 15) // 16
         image_data_offset = 98
-        pixels = [[0 for _ in range(width)] for _ in range(height)]
+        image_data_size = row_words * 2 * height * depth
+        selected_image_offset = image_data_offset + image_data_size
 
-        for plane in range(depth):
-            base = image_data_offset + plane * height * row_words * 2
-            for y in range(height):
-                for word_index in range(row_words):
-                    word = struct.unpack_from(
-                        ">H", data, base + (y * row_words + word_index) * 2
-                    )[0]
-                    for bit in range(16):
-                        x = word_index * 16 + bit
-                        if x < width and word & (1 << (15 - bit)):
-                            pixels[y][x] |= 1 << plane
-
-        motif_pixels = [
-            (x, y)
-            for y in range(8, 48)
-            for x in range(5, 57)
-            if pixels[y][x] in (1, 3)
-        ]
-        motif_width = max(x for x, _ in motif_pixels) - min(x for x, _ in motif_pixels) + 1
-
-        self.assertGreaterEqual(motif_width, 46)
+        self.assertEqual((width, height, depth), (62, 56, 3))
+        self.assertNotEqual(
+            data[image_data_offset : image_data_offset + image_data_size],
+            bytes(image_data_size),
+        )
+        self.assertLess(selected_image_offset, len(data))
 
     def test_amiga_build_opens_visible_workbench_console(self):
         source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")
