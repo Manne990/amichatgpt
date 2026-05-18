@@ -12,7 +12,7 @@ Build the simplest useful Workbench chat client:
 | read-only                            |
 |                                      |
 +--------------------------------------+
-| [ input string gadget            ] [Send]
+| [ three-line input editor        ] [Send]
 +--------------------------------------+
 ```
 
@@ -126,10 +126,10 @@ First version should use native Amiga UI concepts:
 - Intuition window
 - GadTools where practical
 - read-only scrollback area
-- string input gadget
+- custom three-line input editor for prompts
 - Send button
 - close gadget
-- keyboard shortcut for sending, preferably Enter in the input field
+- keyboard editing in the input area
 
 Preferred baseline:
 
@@ -139,6 +139,7 @@ Avoid in the first version:
 
 - MUI dependency
 - ReAction dependency
+- `texteditor.gadget` dependency
 - custom skinning
 - rich text rendering
 
@@ -185,7 +186,7 @@ Protocol expectations:
 
 - open a Workbench window
 - show a scrollable transcript area
-- show an input string gadget
+- show a custom three-line input editor
 - show a Send button
 - append local test text to the transcript
 - no networking yet
@@ -206,7 +207,7 @@ Protocol expectations:
 
 ### M4: Send and Receive
 
-- send a line from the input gadget
+- send a prompt from the input editor
 - receive reply text from the bridge
 - append incoming text to the transcript
 - keep the UI responsive enough for basic use

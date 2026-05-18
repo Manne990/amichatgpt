@@ -15,6 +15,7 @@
 #include <exec/memory.h>
 #include <exec/types.h>
 #include <graphics/gfxbase.h>
+#include <graphics/rastport.h>
 #include <intuition/gadgetclass.h>
 #include <intuition/intuition.h>
 #include <intuition/intuitionbase.h>
@@ -31,7 +32,7 @@ struct Library *GadToolsBase = NULL;
 
 #define CHAT_LINE_COUNT 48
 #define CHAT_LINE_LEN 96
-#define INPUT_TEXT_LEN 128
+#define INPUT_TEXT_LEN 384
 #define INPUT_LINE_COUNT 3
 
 #define WINDOW_MIN_WIDTH 360
@@ -41,16 +42,14 @@ struct Library *GadToolsBase = NULL;
 #define UI_MARGIN 12
 #define UI_GAP 8
 #define INPUT_LINE_HEIGHT 16
-#define INPUT_LINE_GAP 3
+#define INPUT_EDITOR_PADDING_X 5
+#define INPUT_EDITOR_PADDING_Y 4
 #define STATUS_HEIGHT 16
 #define SEND_BUTTON_WIDTH 82
 
 #define GID_TRANSCRIPT 1
-#define GID_INPUT_1 2
-#define GID_INPUT_2 3
-#define GID_INPUT_3 4
-#define GID_SEND 5
-#define GID_STATUS 6
+#define GID_SEND 2
+#define GID_STATUS 3
 
 struct ChatTranscript {
     struct List labels;
@@ -64,11 +63,17 @@ struct AppUi {
     APTR visual_info;
     struct Gadget *gadgets;
     struct Gadget *transcript_gadget;
-    struct Gadget *input_gadgets[INPUT_LINE_COUNT];
     struct Gadget *send_gadget;
     struct Gadget *status_gadget;
     struct Window *window;
     struct ChatTranscript transcript;
+    char input_text[INPUT_TEXT_LEN];
+    UWORD input_len;
+    BOOL input_active;
+    WORD input_left;
+    WORD input_top;
+    WORD input_width;
+    WORD input_height;
     UWORD visible_transcript_lines;
 };
 
@@ -157,6 +162,269 @@ static void refresh_transcript(struct AppUi *ui)
         TAG_DONE);
 }
 
+static WORD get_text_line_height(struct AppUi *ui)
+{
+    WORD height;
+
+    height = 12;
+    if (ui->window != NULL && ui->window->RPort != NULL && ui->window->RPort->TxHeight > 0) {
+        height = ui->window->RPort->TxHeight + 2;
+    }
+
+    return height;
+}
+
+static UWORD input_line_count(struct AppUi *ui)
+{
+    UWORD count;
+    UWORD index;
+
+    count = 1;
+    for (index = 0; index < ui->input_len; index++) {
+        if (ui->input_text[index] == '\n') {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+static UWORD input_current_line_length(struct AppUi *ui)
+{
+    UWORD length;
+    UWORD index;
+
+    length = 0;
+    index = ui->input_len;
+    while (index > 0 && ui->input_text[index - 1] != '\n') {
+        length++;
+        index--;
+    }
+
+    return length;
+}
+
+static UWORD input_max_columns(struct AppUi *ui)
+{
+    WORD char_width;
+    WORD available_width;
+
+    char_width = 8;
+    if (ui->window != NULL && ui->window->RPort != NULL && ui->window->RPort->TxWidth > 0) {
+        char_width = ui->window->RPort->TxWidth;
+    }
+
+    available_width = ui->input_width - (2 * INPUT_EDITOR_PADDING_X) - 4;
+    if (available_width < char_width) {
+        return 1;
+    }
+
+    return available_width / char_width;
+}
+
+static BOOL input_has_text(struct AppUi *ui)
+{
+    UWORD index;
+
+    for (index = 0; index < ui->input_len; index++) {
+        if (ui->input_text[index] != '\n' && ui->input_text[index] != '\r') {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+static void input_cursor_line_and_column(struct AppUi *ui, UWORD *line, UWORD *column)
+{
+    UWORD index;
+
+    *line = 0;
+    *column = 0;
+    for (index = 0; index < ui->input_len; index++) {
+        if (ui->input_text[index] == '\n') {
+            (*line)++;
+            *column = 0;
+        } else {
+            (*column)++;
+        }
+    }
+    if (*line >= INPUT_LINE_COUNT) {
+        *line = INPUT_LINE_COUNT - 1;
+    }
+}
+
+static const char *input_current_line_start(struct AppUi *ui)
+{
+    UWORD index;
+
+    index = ui->input_len;
+    while (index > 0 && ui->input_text[index - 1] != '\n') {
+        index--;
+    }
+
+    return &ui->input_text[index];
+}
+
+static void draw_input_editor(struct AppUi *ui)
+{
+    struct RastPort *rp;
+    WORD left;
+    WORD top;
+    WORD right;
+    WORD bottom;
+    WORD text_x;
+    WORD text_y;
+    WORD line_step;
+    WORD cursor_x;
+    WORD cursor_top;
+    WORD cursor_bottom;
+    UWORD index;
+    UWORD line;
+    UWORD cursor_line;
+    UWORD cursor_column;
+    UWORD line_len;
+    char line_buffer[INPUT_TEXT_LEN];
+    const char *cursor_line_start;
+
+    if (ui->window == NULL || ui->window->RPort == NULL || ui->input_width <= 0 ||
+        ui->input_height <= 0) {
+        return;
+    }
+
+    rp = ui->window->RPort;
+    left = ui->input_left;
+    top = ui->input_top;
+    right = left + ui->input_width - 1;
+    bottom = top + ui->input_height - 1;
+
+    SetAPen(rp, 0);
+    RectFill(rp, left, top, right, bottom);
+
+    SetAPen(rp, 1);
+    Move(rp, left, top);
+    Draw(rp, right, top);
+    Draw(rp, right, bottom);
+    Draw(rp, left, bottom);
+    Draw(rp, left, top);
+
+    SetAPen(rp, 2);
+    Move(rp, left + 1, top + 1);
+    Draw(rp, right - 1, top + 1);
+    Move(rp, left + 1, top + 1);
+    Draw(rp, left + 1, bottom - 1);
+
+    SetAPen(rp, 1);
+    Move(rp, left + 2, bottom - 2);
+    Draw(rp, right - 2, bottom - 2);
+    Move(rp, right - 2, top + 2);
+    Draw(rp, right - 2, bottom - 2);
+
+    SetAPen(rp, 1);
+    SetBPen(rp, 0);
+    SetDrMd(rp, JAM2);
+
+    text_x = left + INPUT_EDITOR_PADDING_X;
+    line_step = get_text_line_height(ui);
+    text_y = top + INPUT_EDITOR_PADDING_Y + rp->TxBaseline;
+
+    line = 0;
+    line_len = 0;
+    for (index = 0; index <= ui->input_len && line < INPUT_LINE_COUNT; index++) {
+        if (index == ui->input_len || ui->input_text[index] == '\n') {
+            line_buffer[line_len] = '\0';
+            if (line_len > 0) {
+                Move(rp, text_x, text_y + (line * line_step));
+                Text(rp, line_buffer, line_len);
+            }
+            line++;
+            line_len = 0;
+        } else if (line_len < INPUT_TEXT_LEN - 1) {
+            line_buffer[line_len++] = ui->input_text[index];
+        }
+    }
+
+    if (ui->input_active) {
+        input_cursor_line_and_column(ui, &cursor_line, &cursor_column);
+        cursor_line_start = input_current_line_start(ui);
+        cursor_x = text_x;
+        if (cursor_column > 0) {
+            cursor_x += TextLength(rp, (char *)cursor_line_start, cursor_column);
+        }
+        cursor_top = text_y + (cursor_line * line_step) - rp->TxBaseline;
+        cursor_bottom = cursor_top + rp->TxHeight - 1;
+        SetAPen(rp, 1);
+        Move(rp, cursor_x, cursor_top);
+        Draw(rp, cursor_x, cursor_bottom);
+    }
+}
+
+static BOOL point_is_in_input_editor(struct AppUi *ui, WORD x, WORD y)
+{
+    return x >= ui->input_left && x < ui->input_left + ui->input_width && y >= ui->input_top &&
+        y < ui->input_top + ui->input_height;
+}
+
+static void clear_input_editor(struct AppUi *ui)
+{
+    ui->input_len = 0;
+    ui->input_text[0] = '\0';
+    draw_input_editor(ui);
+}
+
+static void append_input_char(struct AppUi *ui, char ch)
+{
+    if (ui->input_len >= INPUT_TEXT_LEN - 1) {
+        return;
+    }
+
+    if (ch == '\n') {
+        if (input_line_count(ui) >= INPUT_LINE_COUNT) {
+            return;
+        }
+    } else if (input_current_line_length(ui) >= input_max_columns(ui)) {
+        return;
+    }
+
+    ui->input_text[ui->input_len++] = ch;
+    ui->input_text[ui->input_len] = '\0';
+}
+
+static void handle_input_key(struct AppUi *ui, UWORD code)
+{
+    if (!ui->input_active) {
+        return;
+    }
+
+    if (code == 8 || code == 127) {
+        if (ui->input_len > 0) {
+            ui->input_len--;
+            ui->input_text[ui->input_len] = '\0';
+        }
+    } else if (code == '\r' || code == '\n') {
+        append_input_char(ui, '\n');
+    } else if (code >= 32 && code < 256) {
+        append_input_char(ui, (char)code);
+    }
+
+    draw_input_editor(ui);
+}
+
+static void handle_mouse_button(struct AppUi *ui, UWORD code, WORD x, WORD y)
+{
+    BOOL was_active;
+
+    if (code != SELECTDOWN) {
+        return;
+    }
+
+    was_active = ui->input_active;
+    ui->input_active = point_is_in_input_editor(ui, x, y);
+    if (was_active != ui->input_active) {
+        draw_input_editor(ui);
+    }
+}
+
 static void layout_gadgets(struct AppUi *ui)
 {
     WORD inner_left;
@@ -173,7 +441,6 @@ static void layout_gadgets(struct AppUi *ui)
     WORD status_top;
     WORD status_width;
     WORD text_line_height;
-    UWORD index;
 
     if (ui->window == NULL) {
         return;
@@ -188,8 +455,7 @@ static void layout_gadgets(struct AppUi *ui)
     if (content_width < 1) {
         content_width = 1;
     }
-    input_area_height = (INPUT_LINE_COUNT * INPUT_LINE_HEIGHT) +
-        ((INPUT_LINE_COUNT - 1) * INPUT_LINE_GAP);
+    input_area_height = (INPUT_LINE_COUNT * INPUT_LINE_HEIGHT) + (2 * INPUT_EDITOR_PADDING_Y);
     status_top = inner_bottom - STATUS_HEIGHT;
     input_top = status_top - UI_GAP - input_area_height;
     transcript_top = inner_top;
@@ -209,10 +475,7 @@ static void layout_gadgets(struct AppUi *ui)
         status_width = 320;
     }
 
-    text_line_height = 12;
-    if (ui->window->RPort != NULL && ui->window->RPort->TxHeight > 0) {
-        text_line_height = ui->window->RPort->TxHeight + 2;
-    }
+    text_line_height = get_text_line_height(ui);
     ui->visible_transcript_lines = transcript_height / text_line_height;
     if (ui->visible_transcript_lines == 0) {
         ui->visible_transcript_lines = 1;
@@ -232,21 +495,10 @@ static void layout_gadgets(struct AppUi *ui)
         transcript_height,
         TAG_DONE);
 
-    for (index = 0; index < INPUT_LINE_COUNT; index++) {
-        GT_SetGadgetAttrs(
-            ui->input_gadgets[index],
-            ui->window,
-            NULL,
-            GA_Left,
-            inner_left,
-            GA_Top,
-            input_top + (index * (INPUT_LINE_HEIGHT + INPUT_LINE_GAP)),
-            GA_Width,
-            input_width,
-            GA_Height,
-            INPUT_LINE_HEIGHT,
-            TAG_DONE);
-    }
+    ui->input_left = inner_left;
+    ui->input_top = input_top;
+    ui->input_width = input_width;
+    ui->input_height = input_area_height;
 
     GT_SetGadgetAttrs(
         ui->send_gadget,
@@ -277,6 +529,7 @@ static void layout_gadgets(struct AppUi *ui)
         TAG_DONE);
 
     GT_RefreshWindow(ui->window, NULL);
+    draw_input_editor(ui);
     refresh_transcript(ui);
 }
 
@@ -360,7 +613,6 @@ static BOOL create_gadgets(struct AppUi *ui)
 {
     struct NewGadget ng;
     struct Gadget *tail;
-    UWORD index;
 
     tail = CreateContext(&ui->gadgets);
     if (tail == NULL) {
@@ -383,31 +635,6 @@ static BOOL create_gadgets(struct AppUi *ui)
         return FALSE;
     }
     ui->transcript_gadget = tail;
-
-    for (index = 0; index < INPUT_LINE_COUNT; index++) {
-        init_new_gadget(
-            &ng,
-            ui->visual_info,
-            UI_MARGIN,
-            194 + (index * (INPUT_LINE_HEIGHT + INPUT_LINE_GAP)),
-            466,
-            INPUT_LINE_HEIGHT,
-            NULL,
-            GID_INPUT_1 + index);
-        tail = CreateGadget(
-            STRING_KIND,
-            tail,
-            &ng,
-            GTST_String,
-            "",
-            GTST_MaxChars,
-            INPUT_TEXT_LEN - 1,
-            TAG_DONE);
-        if (tail == NULL) {
-            return FALSE;
-        }
-        ui->input_gadgets[index] = tail;
-    }
 
     init_new_gadget(&ng, ui->visual_info, 486, 194, SEND_BUTTON_WIDTH, 54, "Send", GID_SEND);
     tail = CreateGadget(BUTTON_KIND, tail, &ng, TAG_DONE);
@@ -473,8 +700,8 @@ static BOOL open_app_window(struct AppUi *ui)
         WA_Gadgets,
         ui->gadgets,
         WA_IDCMP,
-        IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_NEWSIZE | BUTTONIDCMP | STRINGIDCMP |
-            LISTVIEWIDCMP,
+        IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_NEWSIZE | IDCMP_MOUSEBUTTONS |
+            IDCMP_VANILLAKEY | BUTTONIDCMP | LISTVIEWIDCMP,
         TAG_DONE);
 
     if (ui->window == NULL) {
@@ -482,8 +709,8 @@ static BOOL open_app_window(struct AppUi *ui)
     }
 
     GT_RefreshWindow(ui->window, NULL);
+    ui->input_active = TRUE;
     layout_gadgets(ui);
-    ActivateGadget(ui->input_gadgets[0], ui->window, NULL);
 
     return TRUE;
 }
@@ -535,89 +762,51 @@ static BOOL open_app_ui(struct AppUi *ui)
     return TRUE;
 }
 
-static void copy_input_lines(struct AppUi *ui, char lines[INPUT_LINE_COUNT][INPUT_TEXT_LEN])
+static void append_input_to_transcript(struct AppUi *ui)
 {
-    struct StringInfo *string_info;
-    UWORD index;
+    char line[CHAT_LINE_LEN];
+    BOOL first_line;
+    UWORD input_index;
+    UWORD line_index;
+    char ch;
 
-    for (index = 0; index < INPUT_LINE_COUNT; index++) {
-        lines[index][0] = '\0';
-        string_info = (struct StringInfo *)ui->input_gadgets[index]->SpecialInfo;
-        if (string_info != NULL && string_info->Buffer != NULL) {
-            strncpy(lines[index], string_info->Buffer, INPUT_TEXT_LEN - 1);
-            lines[index][INPUT_TEXT_LEN - 1] = '\0';
+    first_line = TRUE;
+    line_index = 0;
+    for (input_index = 0; input_index <= ui->input_len; input_index++) {
+        ch = ui->input_text[input_index];
+        if (input_index == ui->input_len || ch == '\n') {
+            line[line_index] = '\0';
+            if (line[0] != '\0') {
+                if (first_line) {
+                    transcript_append_prefixed(&ui->transcript, "You: ", line);
+                    first_line = FALSE;
+                } else {
+                    transcript_append_prefixed(&ui->transcript, "     ", line);
+                }
+            }
+            line_index = 0;
+        } else if (line_index < CHAT_LINE_LEN - 1) {
+            line[line_index++] = ch;
         }
-    }
-}
-
-static BOOL has_input_text(char lines[INPUT_LINE_COUNT][INPUT_TEXT_LEN])
-{
-    UWORD index;
-
-    for (index = 0; index < INPUT_LINE_COUNT; index++) {
-        if (lines[index][0] != '\0') {
-            return TRUE;
-        }
-    }
-
-    return FALSE;
-}
-
-static void clear_input_gadgets(struct AppUi *ui)
-{
-    UWORD index;
-
-    for (index = 0; index < INPUT_LINE_COUNT; index++) {
-        GT_SetGadgetAttrs(
-            ui->input_gadgets[index],
-            ui->window,
-            NULL,
-            GTST_String,
-            "",
-            TAG_DONE);
     }
 }
 
 static void handle_send(struct AppUi *ui)
 {
-    char lines[INPUT_LINE_COUNT][INPUT_TEXT_LEN];
-    BOOL first_line;
-    UWORD index;
-
-    copy_input_lines(ui, lines);
-    if (!has_input_text(lines)) {
-        ActivateGadget(ui->input_gadgets[0], ui->window, NULL);
+    if (!input_has_text(ui)) {
+        ui->input_active = TRUE;
+        draw_input_editor(ui);
         return;
     }
 
-    first_line = TRUE;
-    for (index = 0; index < INPUT_LINE_COUNT; index++) {
-        if (lines[index][0] != '\0') {
-            if (first_line) {
-                transcript_append_prefixed(&ui->transcript, "You: ", lines[index]);
-                first_line = FALSE;
-            } else {
-                transcript_append_prefixed(&ui->transcript, "     ", lines[index]);
-            }
-        }
-    }
+    append_input_to_transcript(ui);
     transcript_append(&ui->transcript, "AmiChatGPT: GUI step ready. Bridge comes next.");
     refresh_transcript(ui);
     set_status(ui, "Ready - not connected");
 
-    clear_input_gadgets(ui);
-    ActivateGadget(ui->input_gadgets[0], ui->window, NULL);
-}
-
-static void handle_input_gadget_up(struct AppUi *ui, UWORD gadget_id)
-{
-    if (gadget_id == GID_INPUT_1) {
-        ActivateGadget(ui->input_gadgets[1], ui->window, NULL);
-    } else if (gadget_id == GID_INPUT_2) {
-        ActivateGadget(ui->input_gadgets[2], ui->window, NULL);
-    } else {
-        handle_send(ui);
-    }
+    clear_input_editor(ui);
+    ui->input_active = TRUE;
+    draw_input_editor(ui);
 }
 
 static void run_event_loop(struct AppUi *ui)
@@ -625,7 +814,10 @@ static void run_event_loop(struct AppUi *ui)
     BOOL running;
     struct IntuiMessage *message;
     ULONG message_class;
+    UWORD message_code;
     UWORD gadget_id;
+    WORD mouse_x;
+    WORD mouse_y;
     struct Gadget *gadget;
 
     running = TRUE;
@@ -634,6 +826,9 @@ static void run_event_loop(struct AppUi *ui)
 
         while ((message = GT_GetIMsg(ui->window->UserPort)) != NULL) {
             message_class = message->Class;
+            message_code = message->Code;
+            mouse_x = message->MouseX;
+            mouse_y = message->MouseY;
             gadget_id = 0;
             if (message->IAddress != NULL) {
                 gadget = (struct Gadget *)message->IAddress;
@@ -649,17 +844,24 @@ static void run_event_loop(struct AppUi *ui)
                 case IDCMP_REFRESHWINDOW:
                     GT_BeginRefresh(ui->window);
                     GT_EndRefresh(ui->window, TRUE);
+                    draw_input_editor(ui);
                     break;
 
                 case IDCMP_NEWSIZE:
                     layout_gadgets(ui);
                     break;
 
+                case IDCMP_MOUSEBUTTONS:
+                    handle_mouse_button(ui, message_code, mouse_x, mouse_y);
+                    break;
+
+                case IDCMP_VANILLAKEY:
+                    handle_input_key(ui, message_code);
+                    break;
+
                 case IDCMP_GADGETUP:
                     if (gadget_id == GID_SEND) {
                         handle_send(ui);
-                    } else if (gadget_id >= GID_INPUT_1 && gadget_id <= GID_INPUT_3) {
-                        handle_input_gadget_up(ui, gadget_id);
                     }
                     break;
 

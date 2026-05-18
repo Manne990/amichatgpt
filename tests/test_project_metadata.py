@@ -113,8 +113,10 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("OpenWindowTags", source)
         self.assertIn("CreateGadget", source)
         self.assertIn("LISTVIEW_KIND", source)
-        self.assertIn("STRING_KIND", source)
         self.assertIn("BUTTON_KIND", source)
+        self.assertIn("draw_input_editor", source)
+        self.assertIn("IDCMP_VANILLAKEY", source)
+        self.assertIn("IDCMP_MOUSEBUTTONS", source)
         self.assertIn("WA_SizeGadget", source)
         self.assertIn("WA_MaxWidth", source)
         self.assertIn("WA_MaxHeight", source)
@@ -123,6 +125,7 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("IDCMP_NEWSIZE", source)
         self.assertIn("layout_gadgets", source)
         self.assertIn("INPUT_LINE_COUNT 3", source)
+        self.assertNotIn("texteditor.gadget", source)
 
     def test_ci_build_script_sets_toolchain_path(self):
         script = (ROOT / "scripts" / "ci" / "build-amiga-package.sh").read_text(

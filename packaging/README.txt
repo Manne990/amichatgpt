@@ -4,7 +4,7 @@ AmiChatGPT 0.1.0
 This is an early GUI build for the AmiChatGPT Workbench client.
 
 The current executable opens a native, resizable Workbench window with a
-scrollable transcript, a three-line input area, and a Send button. It is still offline:
+scrollable transcript, a custom three-line input editor, and a Send button. It is still offline:
 bridge configuration and TCP networking come in the next milestones.
 
 Target:
