@@ -599,7 +599,7 @@ static void layout_gadgets(struct AppUi *ui)
     }
 
     button_left = inner_right - SEND_BUTTON_RIGHT_INSET - SEND_BUTTON_WIDTH;
-    button_height = input_area_height;// - (SEND_BUTTON_VERTICAL_INSET * 2);
+    button_height = input_area_height;
     if (button_height < text_line_height) {
         button_height = text_line_height;
     }
@@ -673,6 +673,11 @@ static void layout_gadgets(struct AppUi *ui)
         if (needs_refresh) {
             RefreshGList(ui->input_scroll_gadget, ui->window, NULL, 1);
         }
+    }
+
+    if (ui->input_gadget != NULL) {
+        button_top = ui->input_gadget->TopEdge;
+        button_height = ui->input_gadget->Height;
     }
 
     GT_SetGadgetAttrs(
@@ -1094,6 +1099,7 @@ static BOOL open_app_window(struct AppUi *ui)
     if (!create_textfield_input(ui)) {
         return FALSE;
     }
+    layout_gadgets(ui);
     ActivateGadget(ui->input_gadget, ui->window, NULL);
 
     return TRUE;
