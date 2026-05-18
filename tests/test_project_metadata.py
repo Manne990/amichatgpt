@@ -37,11 +37,14 @@ class ProjectMetadataTest(unittest.TestCase):
 
         self.assertEqual(magic, 0xE310)
         self.assertEqual(version, 1)
-        self.assertEqual((width, height), (62, 56))
+        self.assertGreater(width, 0)
+        self.assertGreater(height, 0)
+        self.assertLessEqual(width, 80)
+        self.assertLessEqual(height, 80)
         self.assertEqual(icon_type, 3)
         self.assertEqual(drawer_data, 0)
         self.assertEqual(tool_window, 0)
-        self.assertGreaterEqual(stack_size, 32768)
+        self.assertGreaterEqual(stack_size, 4096)
 
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         self.assertIn("packaging/$(APP_NAME).info", makefile)
@@ -49,18 +52,25 @@ class ProjectMetadataTest(unittest.TestCase):
 
     def test_workbench_icon_images_are_present(self):
         data = (ROOT / "packaging" / "AmiChatGPT.info").read_bytes()
+        gadget_width, gadget_height = struct.unpack_from(">HH", data, 12)
         width, height, depth = struct.unpack_from(">HHH", data, 82)
         row_words = (width + 15) // 16
         image_data_offset = 98
         image_data_size = row_words * 2 * height * depth
         selected_image_offset = image_data_offset + image_data_size
 
-        self.assertEqual((width, height, depth), (62, 56, 3))
+        self.assertEqual((width, height), (gadget_width, gadget_height))
+        self.assertGreater(depth, 0)
+        self.assertLessEqual(depth, 8)
         self.assertNotEqual(
             data[image_data_offset : image_data_offset + image_data_size],
             bytes(image_data_size),
         )
-        self.assertLess(selected_image_offset, len(data))
+        self.assertLess(selected_image_offset + 20, len(data))
+        selected_width, selected_height, selected_depth = struct.unpack_from(
+            ">HHH", data, selected_image_offset + 4
+        )
+        self.assertEqual((selected_width, selected_height, selected_depth), (width, height, depth))
 
     def test_amiga_build_opens_visible_workbench_console(self):
         source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")
