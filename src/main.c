@@ -838,7 +838,22 @@ static BOOL open_socket_library(struct AppUi *ui)
 
 static BOOL bridge_output_is_display_byte(unsigned char value)
 {
-    return value >= 32 && value <= 126;
+    return (value >= 32 && value <= 126) || (value >= 193 && value <= 218);
+}
+
+static BOOL bridge_output_decode_display_byte(unsigned char value, char *decoded)
+{
+    if (value >= 32 && value <= 126) {
+        *decoded = (char)value;
+        return TRUE;
+    }
+
+    if (value >= 193 && value <= 218) {
+        *decoded = (char)(value - 128);
+        return TRUE;
+    }
+
+    return FALSE;
 }
 
 static BOOL bridge_output_find_prompt(const char *output, ULONG length, ULONG *prompt_offset)
@@ -940,8 +955,8 @@ static void append_sanitized_bridge_line(
         unsigned char value;
 
         value = (unsigned char)*source_line++;
-        if (bridge_output_is_display_byte(value)) {
-            clean_line[used++] = (char)value;
+        if (bridge_output_decode_display_byte(value, &clean_line[used])) {
+            used++;
         } else if (value == '\t') {
             clean_line[used++] = ' ';
         }
