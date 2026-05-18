@@ -939,7 +939,8 @@ static BOOL create_gadgets(struct AppUi *ui)
     }
     ui->transcript_gadget = tail;
 
-    init_new_gadget(&ng, ui->visual_info, 486, 194, SEND_BUTTON_WIDTH, 54, "Send", GID_SEND);
+    init_new_gadget(&ng, ui->visual_info, 200, 100, SEND_BUTTON_WIDTH, 54, "Send", GID_SEND);
+    //init_new_gadget(&ng, ui->visual_info, 486, 194, SEND_BUTTON_WIDTH, 54, "Send", GID_SEND);
     tail = CreateGadget(BUTTON_KIND, tail, &ng, TAG_DONE);
     if (tail == NULL) {
         return FALSE;
