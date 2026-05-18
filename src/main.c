@@ -79,6 +79,22 @@ Class *TextFieldClass = NULL;
 
 #define INVALID_BRIDGE_SOCKET -1L
 
+#define CHAT_STYLE_NORMAL 0
+#define CHAT_STYLE_USER 1
+#define CHAT_STYLE_ASSISTANT 2
+#define CHAT_STYLE_SYSTEM 3
+#define CHAT_STYLE_THINKING 4
+#define CHAT_STYLE_ERROR 5
+
+#define C64_WHITE 0x05
+#define C64_CYAN 0x9f
+#define C64_LIGHT_RED 0x96
+#define C64_YELLOW 0x9e
+#define C64_LIGHT_GREEN 0x99
+#define C64_LIGHT_BLUE 0x9a
+#define C64_REVERSE_ON 0x12
+#define C64_REVERSE_OFF 0x92
+
 #ifndef SELECTUP
 #define SELECTUP 0xE8
 #endif
@@ -95,7 +111,18 @@ struct ChatTranscript {
     struct List labels;
     struct Node nodes[CHAT_LINE_COUNT];
     char text[CHAT_LINE_COUNT][CHAT_LINE_LEN];
+    UBYTE style[CHAT_LINE_COUNT];
     UWORD count;
+};
+
+struct AppPens {
+    ULONG normal;
+    ULONG user;
+    ULONG assistant;
+    ULONG system;
+    ULONG thinking;
+    ULONG error;
+    ULONG background;
 };
 
 struct AppLayout {
@@ -135,9 +162,12 @@ struct AppUi {
     BOOL gadtools_added;
     BOOL input_gadgets_added;
     struct AppLayout layout;
+    struct AppPens pens;
     char bridge_prompt[BRIDGE_PROMPT_LEN];
     char bridge_output[BRIDGE_RESPONSE_LEN];
 };
+
+static WORD get_text_line_height(struct AppUi *ui);
 
 static int ascii_equals_ignore_case(const char *left, const char *right)
 {
@@ -436,22 +466,43 @@ static void transcript_init(struct ChatTranscript *transcript)
     NewList(&transcript->labels);
 }
 
-static void transcript_append(struct ChatTranscript *transcript, const char *line)
+static void transcript_append_style(struct ChatTranscript *transcript, const char *line, UBYTE style)
 {
     UWORD index;
 
     if (transcript->count == CHAT_LINE_COUNT) {
         for (index = 1; index < CHAT_LINE_COUNT; index++) {
             strcpy(transcript->text[index - 1], transcript->text[index]);
+            transcript->style[index - 1] = transcript->style[index];
         }
         transcript->count--;
     }
 
     strncpy(transcript->text[transcript->count], line, CHAT_LINE_LEN - 1);
     transcript->text[transcript->count][CHAT_LINE_LEN - 1] = '\0';
+    transcript->style[transcript->count] = style;
     transcript->count++;
 
     transcript_rebuild_list(transcript);
+}
+
+static void transcript_append(struct ChatTranscript *transcript, const char *line)
+{
+    transcript_append_style(transcript, line, CHAT_STYLE_NORMAL);
+}
+
+static void transcript_append_prefixed_style(
+    struct ChatTranscript *transcript,
+    const char *prefix,
+    const char *line,
+    UBYTE style)
+{
+    char formatted[CHAT_LINE_LEN];
+
+    strncpy(formatted, prefix, CHAT_LINE_LEN - 1);
+    formatted[CHAT_LINE_LEN - 1] = '\0';
+    strncat(formatted, line, CHAT_LINE_LEN - strlen(formatted) - 1);
+    transcript_append_style(transcript, formatted, style);
 }
 
 static void transcript_append_prefixed(
@@ -459,12 +510,83 @@ static void transcript_append_prefixed(
     const char *prefix,
     const char *line)
 {
-    char formatted[CHAT_LINE_LEN];
+    transcript_append_prefixed_style(transcript, prefix, line, CHAT_STYLE_NORMAL);
+}
 
-    strncpy(formatted, prefix, CHAT_LINE_LEN - 1);
-    formatted[CHAT_LINE_LEN - 1] = '\0';
-    strncat(formatted, line, CHAT_LINE_LEN - strlen(formatted) - 1);
-    transcript_append(transcript, formatted);
+static ULONG chat_pen_for_style(struct AppUi *ui, UBYTE style)
+{
+    switch (style) {
+        case CHAT_STYLE_USER:
+            return ui->pens.user;
+        case CHAT_STYLE_ASSISTANT:
+            return ui->pens.assistant;
+        case CHAT_STYLE_SYSTEM:
+            return ui->pens.system;
+        case CHAT_STYLE_THINKING:
+            return ui->pens.thinking;
+        case CHAT_STYLE_ERROR:
+            return ui->pens.error;
+        default:
+            return ui->pens.normal;
+    }
+}
+
+static void draw_colored_transcript(struct AppUi *ui)
+{
+    struct RastPort *rast_port;
+    WORD text_left;
+    WORD text_top;
+    WORD text_right;
+    WORD text_bottom;
+    WORD line_height;
+    WORD baseline_y;
+    UWORD first_line;
+    UWORD line_index;
+    UWORD visible_lines;
+
+    if (ui->window == NULL || ui->window->RPort == NULL || ui->transcript_gadget == NULL) {
+        return;
+    }
+
+    rast_port = ui->window->RPort;
+    line_height = get_text_line_height(ui);
+    visible_lines = ui->layout.visible_transcript_lines;
+    if (visible_lines == 0) {
+        visible_lines = 1;
+    }
+
+    first_line = 0;
+    if (ui->transcript.count > visible_lines) {
+        first_line = ui->transcript.count - visible_lines;
+    }
+
+    text_left = ui->layout.transcript_left + 4;
+    text_top = ui->layout.transcript_top + 3;
+    text_right = ui->layout.transcript_left + ui->layout.transcript_width - 22;
+    text_bottom = ui->layout.transcript_top + ui->layout.transcript_height - 4;
+
+    if (text_right <= text_left || text_bottom <= text_top) {
+        return;
+    }
+
+    SetAPen(rast_port, ui->pens.background);
+    RectFill(rast_port, text_left, text_top, text_right, text_bottom);
+    SetDrMd(rast_port, JAM1);
+
+    baseline_y = text_top + rast_port->TxBaseline + 1;
+    for (line_index = first_line;
+         line_index < ui->transcript.count && baseline_y <= text_bottom;
+         line_index++) {
+        const char *line;
+
+        line = ui->transcript.text[line_index];
+        if (line[0] != '\0') {
+            SetAPen(rast_port, chat_pen_for_style(ui, ui->transcript.style[line_index]));
+            Move(rast_port, text_left, baseline_y);
+            Text(rast_port, line, (ULONG)strlen(line));
+        }
+        baseline_y += line_height;
+    }
 }
 
 static void refresh_transcript(struct AppUi *ui)
@@ -502,6 +624,7 @@ static void refresh_transcript(struct AppUi *ui)
         GTLV_Top,
         top,
         TAG_DONE);
+    draw_colored_transcript(ui);
 }
 
 static WORD get_text_line_height(struct AppUi *ui)
@@ -537,6 +660,25 @@ static void clear_window_content(struct AppUi *ui)
         ui->window->BorderTop,
         ui->window->Width - ui->window->BorderRight - 1,
         ui->window->Height - ui->window->BorderBottom - 1);
+}
+
+static void init_app_pens(struct AppUi *ui)
+{
+    ui->pens.background = 0;
+    ui->pens.normal = 1;
+    ui->pens.user = 3;
+    ui->pens.assistant = 3;
+    ui->pens.system = 3;
+    ui->pens.thinking = 2;
+    ui->pens.error = 1;
+
+    if (ui->screen != NULL) {
+        ui->pens.normal = ui->screen->DetailPen;
+        ui->pens.error = ui->screen->DetailPen;
+        ui->pens.user = ui->screen->BlockPen;
+        ui->pens.assistant = ui->screen->BlockPen;
+        ui->pens.system = ui->screen->BlockPen;
+    }
 }
 
 static Class *open_textfield_class(void)
@@ -784,9 +926,15 @@ static void add_initial_transcript(struct AppUi *ui)
     char config_line[CHAT_LINE_LEN];
     UWORD index;
 
-    transcript_append(&ui->transcript, "AmiChatGPT " AMICHATGPT_VERSION);
-    transcript_append(&ui->transcript, "Workbench 3.x GadTools GUI prototype.");
-    transcript_append(&ui->transcript, "Configuration ready. Connecting to bridge next.");
+    transcript_append_style(&ui->transcript, "AmiChatGPT " AMICHATGPT_VERSION, CHAT_STYLE_SYSTEM);
+    transcript_append_style(
+        &ui->transcript,
+        "Workbench 3.x GadTools GUI prototype.",
+        CHAT_STYLE_SYSTEM);
+    transcript_append_style(
+        &ui->transcript,
+        "Configuration ready. Connecting to bridge next.",
+        CHAT_STYLE_SYSTEM);
     transcript_append(&ui->transcript, "");
     transcript_append(&ui->transcript, "Type your message and press Send.");
     transcript_append(&ui->transcript, "");
@@ -798,16 +946,20 @@ static void add_initial_transcript(struct AppUi *ui)
         ui->config.host,
         ui->config.port,
         ui->config.width);
-    transcript_append(&ui->transcript, config_line);
+    transcript_append_style(&ui->transcript, config_line, CHAT_STYLE_SYSTEM);
 
     for (index = 0; index < ui->config.error_count; index++) {
-        transcript_append_prefixed(&ui->transcript, "Config error: ", ui->config.errors[index]);
+        transcript_append_prefixed_style(
+            &ui->transcript,
+            "Config error: ",
+            ui->config.errors[index],
+            CHAT_STYLE_ERROR);
     }
 }
 
 static void append_network_message(struct AppUi *ui, const char *message)
 {
-    transcript_append_prefixed(&ui->transcript, "Network: ", message);
+    transcript_append_prefixed_style(&ui->transcript, "Network: ", message, CHAT_STYLE_SYSTEM);
     refresh_transcript(ui);
 }
 
@@ -854,6 +1006,33 @@ static BOOL bridge_output_decode_display_byte(unsigned char value, char *decoded
     }
 
     return FALSE;
+}
+
+static BOOL bridge_output_update_style(unsigned char value, UBYTE *style)
+{
+    switch (value) {
+        case C64_WHITE:
+            *style = CHAT_STYLE_NORMAL;
+            return TRUE;
+        case C64_CYAN:
+        case C64_LIGHT_BLUE:
+            *style = CHAT_STYLE_SYSTEM;
+            return TRUE;
+        case C64_LIGHT_GREEN:
+            *style = CHAT_STYLE_ASSISTANT;
+            return TRUE;
+        case C64_YELLOW:
+            *style = CHAT_STYLE_THINKING;
+            return TRUE;
+        case C64_LIGHT_RED:
+            *style = CHAT_STYLE_ERROR;
+            return TRUE;
+        case C64_REVERSE_ON:
+        case C64_REVERSE_OFF:
+            return TRUE;
+        default:
+            return FALSE;
+    }
 }
 
 static BOOL bridge_output_find_prompt(const char *output, ULONG length, ULONG *prompt_offset)
@@ -944,18 +1123,23 @@ static BOOL receive_bridge_output(struct AppUi *ui, char *output, ULONG output_s
 static void append_sanitized_bridge_line(
     struct ChatTranscript *transcript,
     const char *source_line,
-    const char *echo_line)
+    const char *echo_line,
+    UBYTE *current_style)
 {
     char clean_line[CHAT_LINE_LEN];
     UWORD used;
     char *line;
+    UBYTE line_style;
 
     used = 0;
+    line_style = *current_style;
     while (*source_line != '\0' && used < CHAT_LINE_LEN - 1) {
         unsigned char value;
 
         value = (unsigned char)*source_line++;
-        if (bridge_output_decode_display_byte(value, &clean_line[used])) {
+        if (bridge_output_update_style(value, current_style)) {
+            line_style = *current_style;
+        } else if (bridge_output_decode_display_byte(value, &clean_line[used])) {
             used++;
         } else if (value == '\t') {
             clean_line[used++] = ' ';
@@ -966,7 +1150,7 @@ static void append_sanitized_bridge_line(
     line = trim_text(clean_line);
     if (*line != '\0' && strcmp(line, ">") != 0 &&
         (echo_line == NULL || strcmp(line, echo_line) != 0)) {
-        transcript_append(transcript, line);
+        transcript_append_style(transcript, line, line_style);
     }
 }
 
@@ -977,12 +1161,14 @@ static void append_bridge_output(struct AppUi *ui, char *output, const char *ech
     char saved;
     ULONG length;
     ULONG prompt_offset;
+    UBYTE bridge_style;
 
     length = strlen(output);
     if (bridge_output_find_prompt(output, length, &prompt_offset)) {
         output[prompt_offset] = '\0';
     }
 
+    bridge_style = CHAT_STYLE_ASSISTANT;
     cursor = output;
     while (*cursor != '\0') {
         while (*cursor == '\r' || *cursor == '\n') {
@@ -999,7 +1185,7 @@ static void append_bridge_output(struct AppUi *ui, char *output, const char *ech
 
         saved = *line_end;
         *line_end = '\0';
-        append_sanitized_bridge_line(&ui->transcript, cursor, echo_line);
+        append_sanitized_bridge_line(&ui->transcript, cursor, echo_line, &bridge_style);
 
         if (saved == '\0') {
             break;
@@ -1402,6 +1588,7 @@ static BOOL open_app_window(struct AppUi *ui)
         return FALSE;
     }
     GT_RefreshWindow(ui->window, NULL);
+    refresh_transcript(ui);
     ActivateGadget(ui->input_gadget, ui->window, NULL);
 
     return TRUE;
@@ -1453,6 +1640,7 @@ static BOOL open_app_ui(struct AppUi *ui, int argc, char **argv)
     if (ui->screen == NULL) {
         return FALSE;
     }
+    init_app_pens(ui);
 
     ui->visual_info = GetVisualInfo(ui->screen, TAG_DONE);
     if (ui->visual_info == NULL) {
@@ -1558,7 +1746,7 @@ static void append_input_to_transcript(struct ChatTranscript *transcript, const 
         line[line_index] = '\0';
 
         if (line[0] != '\0') {
-            transcript_append_prefixed(transcript, prefix, line);
+            transcript_append_prefixed_style(transcript, prefix, line, CHAT_STYLE_USER);
             first_line = FALSE;
         }
 
@@ -1651,9 +1839,15 @@ static void handle_send(struct AppUi *ui)
 
     append_input_to_transcript(&ui->transcript, ui->bridge_prompt);
     if (was_truncated) {
-        transcript_append(&ui->transcript, "AmiChatGPT: prompt was truncated before sending.");
+        transcript_append_style(
+            &ui->transcript,
+            "AmiChatGPT: prompt was truncated before sending.",
+            CHAT_STYLE_THINKING);
     }
-    transcript_append(&ui->transcript, "AmiChatGPT: waiting for bridge reply...");
+    transcript_append_style(
+        &ui->transcript,
+        "AmiChatGPT: waiting for bridge reply...",
+        CHAT_STYLE_THINKING);
     refresh_transcript(ui);
 
     if (!ui->bridge_connected) {
@@ -1670,7 +1864,10 @@ static void handle_send(struct AppUi *ui)
             set_status(ui, "Not connected");
         }
     } else {
-        transcript_append(&ui->transcript, "AmiChatGPT: Not connected. Check TCP stack and bridge.");
+        transcript_append_style(
+            &ui->transcript,
+            "AmiChatGPT: Not connected. Check TCP stack and bridge.",
+            CHAT_STYLE_ERROR);
         set_status(ui, "Not connected");
     }
     refresh_transcript(ui);
@@ -1718,6 +1915,7 @@ static void run_event_loop(struct AppUi *ui)
                     if (ui->input_scroll_gadget != NULL) {
                         RefreshGList(ui->input_scroll_gadget, ui->window, NULL, -1);
                     }
+                    refresh_transcript(ui);
                     break;
 
                 case IDCMP_NEWSIZE:
