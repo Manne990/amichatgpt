@@ -115,6 +115,10 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("LISTVIEW_KIND", source)
         self.assertIn("STRING_KIND", source)
         self.assertIn("BUTTON_KIND", source)
+        self.assertIn("WA_SizeGadget", source)
+        self.assertIn("IDCMP_NEWSIZE", source)
+        self.assertIn("layout_gadgets", source)
+        self.assertIn("INPUT_LINE_COUNT 3", source)
 
     def test_ci_build_script_sets_toolchain_path(self):
         script = (ROOT / "scripts" / "ci" / "build-amiga-package.sh").read_text(
