@@ -52,10 +52,10 @@ class ProjectMetadataTest(unittest.TestCase):
 
     def test_workbench_icon_images_are_present(self):
         data = (ROOT / "packaging" / "AmiChatGPT.info").read_bytes()
-        image_header_offset = 80
+        image_header_offset = 78
         image_header_size = 20
         gadget_width, gadget_height = struct.unpack_from(">HH", data, 12)
-        width, height, depth = struct.unpack_from(">HHH", data, image_header_offset + 2)
+        width, height, depth = struct.unpack_from(">HHH", data, image_header_offset + 4)
         row_words = (width + 15) // 16
         image_data_offset = image_header_offset + image_header_size
         image_data_size = row_words * 2 * height * depth
@@ -74,7 +74,7 @@ class ProjectMetadataTest(unittest.TestCase):
         )
         self.assertLess(selected_image_offset + image_header_size, len(data))
         selected_width, selected_height, selected_depth = struct.unpack_from(
-            ">HHH", data, selected_image_offset + 2
+            ">HHH", data, selected_image_offset + 4
         )
         self.assertEqual((selected_width, selected_height, selected_depth), (width, height, depth))
         selected_data_offset = selected_image_offset + image_header_size
