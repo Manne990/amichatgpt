@@ -64,7 +64,7 @@ $(PACKAGE_FILES): $(AMIGA_BIN) packaging/$(APP_NAME).info packaging/README.txt V
 	cp VERSION $(PACKAGE_DIR)/VERSION
 	cp packaging/Gadgets/textfield.gadget $(PACKAGE_DIR)/Gadgets/textfield.gadget
 	cp packaging/ThirdParty/textfield-license.txt $(PACKAGE_DIR)/ThirdParty/textfield-license.txt
-	printf "HOST=192.168.1.50\nPORT=6464\nWIDTH=72\n" > $(PACKAGE_DIR)/AmiChatGPT.conf
+	printf "HOST=127.0.0.1\nPORT=6464\nWIDTH=72\n" > $(PACKAGE_DIR)/AmiChatGPT.conf
 
 archive: $(PACKAGE_FILES)
 	@if [ -n "$(LHA)" ]; then \

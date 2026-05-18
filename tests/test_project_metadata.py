@@ -165,8 +165,10 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("HOST", source)
         self.assertIn("PORT", source)
         self.assertIn("WIDTH", source)
+        self.assertIn('DEFAULT_BRIDGE_HOST "127.0.0.1"', source)
         self.assertIn("Config error:", source)
         self.assertIn("AmiChatGPT.conf", makefile)
+        self.assertIn("HOST=127.0.0.1", makefile)
         self.assertIn("Workbench ToolTypes", readme)
         self.assertIn("AmiChatGPT --host", package_readme)
 
@@ -184,8 +186,26 @@ class ProjectMetadataTest(unittest.TestCase):
         self.assertIn("Network: ", source)
         self.assertIn("connected to %s:%u", source)
         self.assertIn("TCP stack not available", source)
-        self.assertIn("tries to connect to the configured ChatGPT64 bridge", readme)
+        self.assertIn("connects to the configured ChatGPT64 bridge", readme)
         self.assertIn("tries to connect to the configured", package_readme)
+
+    def test_send_receive_milestone_is_implemented(self):
+        source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        package_readme = (ROOT / "packaging" / "README.txt").read_text(encoding="utf-8")
+
+        self.assertIn("BRIDGE_PROMPT_LEN", source)
+        self.assertIn("BRIDGE_RESPONSE_LEN", source)
+        self.assertIn("build_bridge_prompt", source)
+        self.assertIn("bridge_send_all", source)
+        self.assertIn("receive_bridge_output", source)
+        self.assertIn("append_bridge_output", source)
+        self.assertIn("send(ui->bridge_socket", source)
+        self.assertIn("recv(ui->bridge_socket", source)
+        self.assertIn("Waiting for bridge", source)
+        self.assertIn("sends the prompt as a terminal line", readme)
+        self.assertIn("`tcpser` is only needed for C64/CCGMS", readme)
+        self.assertIn("sends prompts as terminal lines", package_readme)
 
     def test_ci_build_script_sets_toolchain_path(self):
         script = (ROOT / "scripts" / "ci" / "build-amiga-package.sh").read_text(

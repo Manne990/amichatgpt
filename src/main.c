@@ -7,7 +7,7 @@
 #define AMICHATGPT_VERSION "0.0.0-dev"
 #endif
 
-#define DEFAULT_BRIDGE_HOST "192.168.1.50"
+#define DEFAULT_BRIDGE_HOST "127.0.0.1"
 #define DEFAULT_BRIDGE_PORT "6464"
 #define DEFAULT_TEXT_WIDTH "72"
 
@@ -47,6 +47,9 @@ Class *TextFieldClass = NULL;
 
 #define CHAT_LINE_COUNT 48
 #define CHAT_LINE_LEN 96
+#define BRIDGE_PROMPT_LEN 1200
+#define BRIDGE_RESPONSE_LEN 8192
+#define BRIDGE_READ_CHUNK 256
 #define CONFIG_ERROR_COUNT 8
 #define CONFIG_ERROR_LEN CHAT_LINE_LEN
 #define CONFIG_HOST_LEN 64
@@ -827,12 +830,123 @@ static BOOL open_socket_library(struct AppUi *ui)
     return TRUE;
 }
 
+static BOOL bridge_output_has_prompt(const char *output, ULONG length)
+{
+    return length >= 2 && output[length - 2] == '>' && output[length - 1] == ' ';
+}
+
+static BOOL receive_bridge_output(struct AppUi *ui, char *output, ULONG output_size)
+{
+    char chunk[BRIDGE_READ_CHUNK];
+    ULONG used;
+    ULONG copy_size;
+    LONG received;
+
+    used = 0;
+    if (output_size == 0) {
+        return FALSE;
+    }
+    output[0] = '\0';
+
+    while (used < output_size - 1) {
+        received = recv(ui->bridge_socket, chunk, sizeof(chunk), 0);
+        if (received <= 0) {
+            append_network_message(ui, "bridge disconnected while reading.");
+            close_bridge_connection(ui);
+            return FALSE;
+        }
+
+        copy_size = (ULONG)received;
+        if (copy_size > output_size - used - 1) {
+            copy_size = output_size - used - 1;
+        }
+        CopyMem(chunk, output + used, copy_size);
+        used += copy_size;
+        output[used] = '\0';
+
+        if (bridge_output_has_prompt(output, used)) {
+            return TRUE;
+        }
+    }
+
+    append_network_message(ui, "bridge reply was too long and was truncated.");
+    return TRUE;
+}
+
+static void append_bridge_output(struct AppUi *ui, char *output, const char *echo_line)
+{
+    char *cursor;
+    char *line_end;
+    char *line;
+    char saved;
+    ULONG length;
+
+    length = strlen(output);
+    if (bridge_output_has_prompt(output, length)) {
+        output[length - 2] = '\0';
+    }
+
+    cursor = output;
+    while (*cursor != '\0') {
+        while (*cursor == '\r' || *cursor == '\n') {
+            cursor++;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+
+        line_end = cursor;
+        while (*line_end != '\0' && *line_end != '\r' && *line_end != '\n') {
+            line_end++;
+        }
+
+        saved = *line_end;
+        *line_end = '\0';
+        line = trim_text(cursor);
+
+        if (*line != '\0' && strcmp(line, ">") != 0 &&
+            (echo_line == NULL || strcmp(line, echo_line) != 0)) {
+            transcript_append(&ui->transcript, line);
+        }
+
+        if (saved == '\0') {
+            break;
+        }
+        cursor = line_end + 1;
+    }
+}
+
+static BOOL bridge_send_all(struct AppUi *ui, const char *text)
+{
+    const char *cursor;
+    ULONG remaining;
+    LONG sent;
+
+    cursor = text;
+    remaining = strlen(text);
+
+    while (remaining > 0) {
+        sent = send(ui->bridge_socket, cursor, remaining, 0);
+        if (sent <= 0) {
+            append_network_message(ui, "could not send to bridge.");
+            close_bridge_connection(ui);
+            return FALSE;
+        }
+
+        cursor += sent;
+        remaining -= (ULONG)sent;
+    }
+
+    return TRUE;
+}
+
 static BOOL connect_bridge(struct AppUi *ui)
 {
     struct sockaddr_in server_addr;
     ULONG address;
     LONG socket_handle;
     char status_line[CHAT_LINE_LEN];
+    char bridge_output[BRIDGE_RESPONSE_LEN];
 
     if (ui->bridge_connected) {
         return TRUE;
@@ -893,7 +1007,15 @@ static BOOL connect_bridge(struct AppUi *ui)
         ui->config.host,
         ui->config.port);
     append_network_message(ui, status_line);
+
+    if (!receive_bridge_output(ui, bridge_output, sizeof(bridge_output))) {
+        set_status(ui, "Not connected");
+        return FALSE;
+    }
+    append_bridge_output(ui, bridge_output, NULL);
+
     set_status(ui, "Connected");
+    refresh_transcript(ui);
 
     return TRUE;
 }
@@ -1346,10 +1468,60 @@ static void append_input_to_transcript(struct ChatTranscript *transcript, const 
     }
 }
 
+static BOOL build_bridge_prompt(const char *input_text, char *prompt, ULONG prompt_size)
+{
+    ULONG index;
+    BOOL pending_space;
+    BOOL truncated;
+    unsigned char value;
+
+    index = 0;
+    pending_space = FALSE;
+    truncated = FALSE;
+
+    if (prompt_size == 0) {
+        return FALSE;
+    }
+
+    while (*input_text != '\0') {
+        value = (unsigned char)*input_text++;
+
+        if (value == '\r' || value == '\n' || value == '\t' || value == ' ') {
+            pending_space = index > 0;
+            continue;
+        }
+
+        if (value < 32 || value > 126) {
+            continue;
+        }
+
+        if (pending_space) {
+            if (index >= prompt_size - 1) {
+                truncated = TRUE;
+                break;
+            }
+            prompt[index++] = ' ';
+            pending_space = FALSE;
+        }
+
+        if (index >= prompt_size - 1) {
+            truncated = TRUE;
+            break;
+        }
+        prompt[index++] = (char)value;
+    }
+
+    prompt[index] = '\0';
+    return truncated;
+}
+
 static void handle_send(struct AppUi *ui)
 {
     char *input_text;
+    char bridge_prompt[BRIDGE_PROMPT_LEN];
+    char bridge_output[BRIDGE_RESPONSE_LEN];
     ULONG allocated_size;
+    BOOL was_truncated;
 
     input_text = copy_input_text(ui, &allocated_size);
     if (input_text == NULL) {
@@ -1358,19 +1530,31 @@ static void handle_send(struct AppUi *ui)
         return;
     }
 
-    if (!text_has_content(input_text)) {
+    was_truncated = build_bridge_prompt(input_text, bridge_prompt, sizeof(bridge_prompt));
+    if (!text_has_content(bridge_prompt)) {
         FreeMem(input_text, allocated_size);
         ActivateGadget(ui->input_gadget, ui->window, NULL);
         return;
     }
 
-    append_input_to_transcript(&ui->transcript, input_text);
+    append_input_to_transcript(&ui->transcript, bridge_prompt);
+    if (was_truncated) {
+        transcript_append(&ui->transcript, "AmiChatGPT: prompt was truncated before sending.");
+    }
+
     if (!ui->bridge_connected) {
         connect_bridge(ui);
     }
+
     if (ui->bridge_connected) {
-        transcript_append(&ui->transcript, "AmiChatGPT: Connected. Sending comes next.");
-        set_status(ui, "Connected");
+        set_status(ui, "Waiting for bridge");
+        if (bridge_send_all(ui, bridge_prompt) && bridge_send_all(ui, "\r\n") &&
+            receive_bridge_output(ui, bridge_output, sizeof(bridge_output))) {
+            append_bridge_output(ui, bridge_output, bridge_prompt);
+            set_status(ui, "Connected");
+        } else {
+            set_status(ui, "Not connected");
+        }
     } else {
         transcript_append(&ui->transcript, "AmiChatGPT: Not connected. Check TCP stack and bridge.");
         set_status(ui, "Not connected");
@@ -1470,7 +1654,7 @@ static void write_scaffold_message(FILE *out)
     fputs("  port: " DEFAULT_BRIDGE_PORT "\n", out);
     fputs("  width: " DEFAULT_TEXT_WIDTH "\n", out);
     fputs("\n", out);
-    fputs("Current milestone: bridge TCP connect; sending comes next.\n", out);
+    fputs("Current milestone: bridge send and receive.\n", out);
 }
 
 int main(int argc, char **argv)

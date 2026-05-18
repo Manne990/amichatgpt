@@ -154,7 +154,7 @@ The app connects to the ChatGPT64 bridge over plain TCP.
 Default settings:
 
 ```text
-HOST=192.168.1.50
+HOST=127.0.0.1
 PORT=6464
 ```
 
@@ -170,10 +170,14 @@ Configuration sources:
 Suggested ToolTypes:
 
 ```text
-HOST=192.168.1.50
+HOST=127.0.0.1
 PORT=6464
 WIDTH=72
 ```
+
+Use `HOST=127.0.0.1` for emulator setups where UAE/bsdsocket maps Amiga
+sockets onto the same host computer that runs ChatGPT64. Use the bridge
+computer's LAN IP address for real Amigas or separate emulated TCP stacks.
 
 The app sends one user-entered prompt followed by CR/LF and reads the bridge reply.
 
