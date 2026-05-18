@@ -1,10 +1,11 @@
 AmiChatGPT 0.1.0
 ================
 
-This is an early scaffold build for the AmiChatGPT Workbench client.
+This is an early GUI build for the AmiChatGPT Workbench client.
 
-It is not the full GUI yet. The current executable verifies that the
-Amiga m68k build, package, and emulator artifact pipeline works.
+The current executable opens a native Workbench window with a scrollable
+transcript, an input field, and a Send button. It is still offline:
+bridge configuration and TCP networking come in the next milestones.
 
 Target:
 - AmigaOS / Workbench 3.0 or 3.1
@@ -22,4 +23,3 @@ Default bridge settings for the future network client:
   HOST=192.168.1.50
   PORT=6464
   WIDTH=72
-

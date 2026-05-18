@@ -106,11 +106,15 @@ class ProjectMetadataTest(unittest.TestCase):
             self.assertGreaterEqual(len(selected_data), image_data_size - 2)
             self.assertNotEqual(selected_data, bytes(len(selected_data)))
 
-    def test_amiga_build_opens_visible_workbench_console(self):
+    def test_amiga_build_uses_native_workbench_gui(self):
         source = (ROOT / "src" / "main.c").read_text(encoding="utf-8")
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         self.assertIn("AMIGA_BUILD", makefile)
-        self.assertIn("CON:40/40/560/145/AmiChatGPT/CLOSE/WAIT", source)
+        self.assertIn("OpenWindowTags", source)
+        self.assertIn("CreateGadget", source)
+        self.assertIn("LISTVIEW_KIND", source)
+        self.assertIn("STRING_KIND", source)
+        self.assertIn("BUTTON_KIND", source)
 
     def test_ci_build_script_sets_toolchain_path(self):
         script = (ROOT / "scripts" / "ci" / "build-amiga-package.sh").read_text(
@@ -124,7 +128,7 @@ class ProjectMetadataTest(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         package_readme = (ROOT / "packaging" / "README.txt").read_text(encoding="utf-8")
         self.assertIn("Load in an Emulator", readme)
-        self.assertIn("This is an early scaffold build", package_readme)
+        self.assertIn("This is an early GUI build", package_readme)
 
 
 if __name__ == "__main__":
